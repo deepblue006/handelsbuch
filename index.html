@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Handelsbuch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0E2A44;
+  --panel:#15334D;
+  --panel-2:#1D3C58;
+  --line:#2A4A66;
+  --line-strong:#3E607D;
+  --sheet:#123252;
+  --input:#092134;
+  --ink:#DCE8F2;
+  --soft:#7FA6C6;
+  --gold:#F0B429;
+  --blue:#6FB3D9;
+  --mint:#79D2AE;
+  --violet:#B58BC4;
+  --loss:#F2937B;
+}
+*{box-sizing:border-box}
+html{background:#0E2A44;color-scheme:dark}
+html,body{margin:0;padding:0}
+body{
+  background:#0E2A44;color:#DCE8F2;
+  font-family:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:15px;line-height:1.5;font-variant-numeric:tabular-nums;
+  -webkit-font-smoothing:antialiased;
+}
+.app{background:var(--bg);color:var(--ink);min-height:100vh}
+.wrap{max-width:1000px;margin:0 auto;padding:26px 18px 90px}
+button{font:inherit;color:inherit;cursor:pointer}
+input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.up{color:var(--mint)}
+.down{color:var(--loss)}
+.lbl{font-size:12px;color:var(--soft);margin-bottom:3px}
+
+/* Kopf */
+.hd{display:flex;justify-content:space-between;align-items:flex-end;gap:18px;flex-wrap:wrap;margin-bottom:18px}
+.brand{font-size:14px;letter-spacing:.2em;text-transform:uppercase;color:var(--soft);font-weight:600;margin-bottom:10px}
+.total{font-size:31px;font-weight:600;line-height:1.05}
+.total-sm{font-size:21px;font-weight:600;line-height:1.05}
+.hd .right{text-align:right}
+@media(max-width:520px){.hd .right{text-align:left}}
+
+/* Verhältnisbalken */
+.split{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--panel-2)}
+.split i{display:block}
+.splitkey{display:flex;justify-content:space-between;gap:12px;font-size:12.5px;color:var(--soft);margin:6px 0 20px}
+
+/* Kammern */
+.kammern{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+@media(max-width:640px){.kammern{grid-template-columns:1fr}}
+.kammer{background:var(--panel);border-radius:6px;padding:18px 18px 16px;text-align:center}
+.kammer h4{margin:0 0 14px;font-size:12px;letter-spacing:.13em;text-transform:uppercase;color:var(--soft);font-weight:600}
+.kammer .kv{font-size:20px;font-weight:600;margin-top:12px}
+.kammer .kp{font-size:12.5px;color:var(--soft);margin-top:1px}
+.kammer .kpl{font-size:13px;margin-top:4px}
+.klegend{display:flex;flex-direction:column;gap:2px;margin-top:14px;font-size:13px;text-align:left}
+.klegend button{display:flex;align-items:center;gap:8px;width:100%;background:none;border:none;
+  padding:5px 6px;border-radius:3px;text-align:left}
+.klegend button:hover{background:var(--panel-2)}
+.klegend i{width:10px;height:10px;border-radius:2px;flex:none}
+.klegend .sp{flex:1}
+.klegend .r{color:var(--soft);min-width:48px;text-align:right}
+.kammer .hollow{font-size:13px;color:var(--soft);padding:14px 0;line-height:1.45}
+
+/* Panels */
+.panel{background:var(--panel);border-radius:6px;padding:18px 20px;margin-bottom:14px}
+.panel-hd{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.panel h3{font-size:12px;letter-spacing:.13em;text-transform:uppercase;color:var(--soft);font-weight:600;margin:0}
+.panel .sub{font-size:12.5px;color:var(--soft);margin:-8px 0 14px;max-width:66ch}
+
+/* Buttons */
+.btn{background:var(--gold);color:#22303c;border:none;border-radius:4px;padding:8px 15px;font-size:14px;font-weight:600}
+.btn:hover{background:#FFC64A}
+.btn-ghost{background:transparent;border:1px solid var(--line-strong);border-radius:4px;padding:8px 14px;font-size:13.5px;color:var(--ink)}
+.btn-ghost:hover{background:var(--panel-2)}
+.btn-sm{padding:4px 10px;font-size:12.5px}
+.btn-danger{color:var(--loss);border-color:rgba(242,147,123,.4)}
+.btn-danger:hover{background:rgba(242,147,123,.1)}
+
+/* Bestandszeilen */
+.hold{display:grid;grid-template-columns:1fr auto;gap:12px 16px;padding:12px 0;border-bottom:1px solid var(--line);align-items:center}
+.hold:last-child{border-bottom:none}
+.hold .name{font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px}
+.hold .name i{width:10px;height:10px;border-radius:2px;flex:none}
+.hold .meta{font-size:12.5px;color:var(--soft);margin-top:2px}
+.hold .val{text-align:right;white-space:nowrap}
+.hold .val b{display:block;font-size:17px;font-weight:600}
+.hold .val span{font-size:12.5px}
+.hold .acts{grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.px{display:flex;align-items:center;gap:7px}
+.px label{font-size:12.5px;color:var(--soft)}
+.px input{width:112px;padding:5px 8px;background:var(--input);border:1px solid var(--line-strong);
+  border-radius:3px;text-align:right}
+.spacer{flex:1}
+
+/* Haltefristen */
+.fr{margin-bottom:15px}
+.fr:last-child{margin-bottom:0}
+.frtop{display:flex;justify-content:space-between;gap:12px;font-size:13.5px;margin-bottom:6px;flex-wrap:wrap}
+.frtop b{font-weight:600}
+.frtop em{font-style:normal;color:var(--soft)}
+.frbar{height:9px;background:var(--panel-2);border-radius:5px;overflow:hidden}
+.frbar i{display:block;height:100%;background:var(--gold);border-radius:5px}
+.frbar i.done{background:var(--mint)}
+.frscale{display:flex;justify-content:space-between;font-size:11.5px;color:var(--soft);margin-top:4px}
+
+/* Geplant */
+.plan{padding:12px 0;border-bottom:1px solid var(--line)}
+.plan:last-child{border-bottom:none}
+.plantop{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:baseline}
+.plantop b{font-size:15px;font-weight:600}
+.plantop em{font-style:normal;color:var(--soft);font-size:13px}
+.gap{font-size:15px;font-weight:600;white-space:nowrap}
+.gap.hit{color:var(--mint)}
+.planmeta{font-size:12.5px;color:var(--soft);margin-top:3px}
+.plannote{font-size:13px;color:var(--soft);margin-top:5px;max-width:70ch}
+.planacts{display:flex;gap:8px;margin-top:9px;flex-wrap:wrap}
+
+/* Tagebuch */
+.jr{padding:12px 0;border-bottom:1px solid var(--line)}
+.jr:last-child{border-bottom:none}
+.jrtop{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline}
+.jrtop b{font-weight:600}
+.buy{color:var(--mint)}
+.sell{color:var(--loss)}
+.jrmeta{font-size:12.5px;color:var(--soft);margin-top:2px}
+.jrnote{font-size:13px;color:var(--ink);opacity:.85;margin-top:5px;white-space:pre-wrap;max-width:72ch}
+.tag{display:inline-block;font-size:11.5px;padding:1px 7px;border-radius:3px;border:1px solid var(--line-strong);color:var(--soft)}
+.tag.free{color:var(--mint);border-color:rgba(121,210,174,.45)}
+.stats{display:flex;gap:26px;flex-wrap:wrap;padding-bottom:14px;margin-bottom:4px;border-bottom:1px solid var(--line)}
+.stats div span{display:block;font-size:12px;color:var(--soft)}
+.stats div b{font-size:19px;font-weight:600}
+
+/* Leer */
+.empty{font-size:13.5px;color:var(--soft);padding:6px 0 10px;max-width:62ch}
+.empty p{margin:0 0 12px}
+
+/* Dialog */
+dialog{border:none;padding:0;background:transparent;max-width:min(560px,94vw);width:100%}
+dialog::backdrop{background:rgba(6,18,30,.66)}
+.sheet{background:var(--sheet);border:1px solid var(--line-strong);border-radius:7px;padding:24px;color:var(--ink)}
+.sheet h2{font-size:20px;font-weight:600;margin:0 0 4px}
+.sheet .hint{font-size:13px;color:var(--soft);margin:0 0 18px;max-width:56ch}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:12.5px;color:var(--soft);margin-bottom:4px}
+.field input,.field select,.field textarea{width:100%;padding:9px 10px;background:var(--input);
+  border:1px solid var(--line-strong);border-radius:4px}
+.field textarea{min-height:80px;resize:vertical}
+.field select option{background:var(--sheet)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:520px){.row2{grid-template-columns:1fr}}
+.sheet-acts{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;flex-wrap:wrap}
+.err{color:var(--loss);font-size:13px;margin-top:10px;min-height:18px}
+
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:var(--sheet);
+  border:1px solid var(--line-strong);border-radius:5px;padding:11px 20px;font-size:14px;
+  opacity:0;pointer-events:none;transition:opacity .18s;z-index:99}
+.toast.show{opacity:1}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="wrap">
+
+  <div class="brand">Handelsbuch</div>
+
+  <div class="hd">
+    <div>
+      <div class="lbl">Depotwert</div>
+      <div class="total" id="total">0,00 €</div>
+    </div>
+    <div class="right">
+      <div class="lbl">Offen</div>
+      <div class="total-sm" id="openPl">0,00 €</div>
+      <div class="lbl" id="openSub" style="margin:3px 0 0">Noch nichts gebucht</div>
+    </div>
+  </div>
+
+  <div class="split" id="split"></div>
+  <div class="splitkey" id="splitkey"><span>Krypto —</span><span>Aktien —</span></div>
+
+  <div class="kammern">
+    <div class="kammer">
+      <h4>Krypto</h4>
+      <div id="kamKrypto"></div>
+    </div>
+    <div class="kammer">
+      <h4>Aktien und ETF</h4>
+      <div id="kamAktien"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-hd"><h3>Bestand</h3><button class="btn" data-add-trade>Trade buchen</button></div>
+    <div id="holdings"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-hd"><h3>Haltefristen</h3></div>
+    <div class="sub">Jeder Krypto-Kauf läuft eigenständig ein Jahr. Verkauft wird nach FIFO, ältester Kauf zuerst. Aktien haben keine Frist.</div>
+    <div id="fristen"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-hd"><h3>Geplant</h3><button class="btn-ghost" data-add-plan>Beobachtung anlegen</button></div>
+    <div id="plans"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-hd"><h3>Tagebuch</h3><button class="btn-ghost" data-add-trade>Eintrag buchen</button></div>
+    <div class="stats" id="stats"></div>
+    <div id="journal"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-hd"><h3>Daten</h3></div>
+    <div class="sub">Alles liegt im Speicher dieses Browsers. Wird er geleert, sind die Daten weg — sichere regelmäßig.</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <button class="btn-ghost" id="btnExport">Sicherung herunterladen</button>
+      <label class="btn-ghost" style="cursor:pointer">Sicherung einlesen
+        <input type="file" id="fileImport" accept="application/json,.json" style="display:none"></label>
+      <span class="spacer"></span>
+      <button class="btn-ghost btn-danger" id="btnReset">Handelsbuch leeren</button>
+    </div>
+    <div id="assets" style="margin-top:16px"></div>
+  </div>
+
+</div>
+</div>
+
+<!-- Dialog Trade -->
+<dialog id="dlgTrade"><div class="sheet">
+  <h2 id="tradeTitle">Trade buchen</h2>
+  <p class="hint">Gebühren erhöhen beim Kauf den Einstand und mindern beim Verkauf den Erlös.</p>
+  <div class="field"><label for="tAsset">Wert</label><select id="tAsset"></select></div>
+  <div id="newAssetBox" style="display:none">
+    <div class="row2">
+      <div class="field"><label for="tSymbol">Kürzel</label><input id="tSymbol" placeholder="z. B. SAP oder BTC"></div>
+      <div class="field"><label for="tName">Name</label><input id="tName" placeholder="z. B. SAP SE"></div>
+    </div>
+    <div class="field"><label for="tType">Art</label>
+      <select id="tType"><option value="stock">Aktie oder ETF</option><option value="crypto">Kryptowährung</option></select></div>
+  </div>
+  <div class="row2">
+    <div class="field"><label for="tSide">Richtung</label>
+      <select id="tSide"><option value="buy">Kauf</option><option value="sell">Verkauf</option></select></div>
+    <div class="field"><label for="tDate">Datum</label><input type="date" id="tDate"></div>
+  </div>
+  <div class="row2">
+    <div class="field"><label for="tQty">Menge</label><input id="tQty" inputmode="decimal" placeholder="0"></div>
+    <div class="field"><label for="tPrice">Kurs je Stück in €</label><input id="tPrice" inputmode="decimal" placeholder="0,00"></div>
+  </div>
+  <div class="field"><label for="tFee">Gebühren in €</label><input id="tFee" inputmode="decimal" placeholder="0,00"></div>
+  <div class="field"><label for="tNote">Tagebuch — warum dieser Trade?</label>
+    <textarea id="tNote" placeholder="Deine Überlegung, damit du sie später nachlesen kannst"></textarea></div>
+  <div class="err" id="tradeErr"></div>
+  <div class="sheet-acts">
+    <button class="btn-ghost" data-close>Abbrechen</button>
+    <button class="btn" id="tradeSave">Buchen</button>
+  </div>
+</div></dialog>
+
+<!-- Dialog Beobachtung -->
+<dialog id="dlgPlan"><div class="sheet">
+  <h2 id="planTitle">Beobachtung anlegen</h2>
+  <p class="hint">Der Abstand wird gegen den Kurs gerechnet, den du hier hinterlegst.</p>
+  <div class="row2">
+    <div class="field"><label for="pSymbol">Kürzel</label><input id="pSymbol" placeholder="z. B. NVDA"></div>
+    <div class="field"><label for="pName">Name</label><input id="pName" placeholder="optional"></div>
+  </div>
+  <div class="row2">
+    <div class="field"><label for="pType">Art</label>
+      <select id="pType"><option value="stock">Aktie oder ETF</option><option value="crypto">Kryptowährung</option></select></div>
+    <div class="field"><label for="pPrice">Aktueller Kurs in €</label><input id="pPrice" inputmode="decimal" placeholder="0,00"></div>
+  </div>
+  <div class="row2">
+    <div class="field"><label for="pEntry">Wunschkurs in €</label><input id="pEntry" inputmode="decimal" placeholder="0,00"></div>
+    <div class="field"><label for="pQty">Geplante Menge</label><input id="pQty" inputmode="decimal" placeholder="optional"></div>
+  </div>
+  <div class="row2">
+    <div class="field"><label for="pStop">Stop in €</label><input id="pStop" inputmode="decimal" placeholder="optional"></div>
+    <div class="field"><label for="pTarget">Kursziel in €</label><input id="pTarget" inputmode="decimal" placeholder="optional"></div>
+  </div>
+  <div class="field"><label for="pNote">Warum dieser Wert?</label><textarea id="pNote" placeholder="Deine These in einem Satz"></textarea></div>
+  <div class="err" id="planErr"></div>
+  <div class="sheet-acts">
+    <button class="btn-ghost" data-close>Abbrechen</button>
+    <button class="btn" id="planSave">Speichern</button>
+  </div>
+</div></dialog>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ================= Speicher ================= */
+const KEY = "handelsbuch.v1";
+let S = { assets: [], trades: [], plans: [] };
+
+function load(){
+  try{
+    const raw = localStorage.getItem(KEY);
+    if(raw){
+      const d = JSON.parse(raw);
+      S.assets = Array.isArray(d.assets) ? d.assets : [];
+      S.trades = Array.isArray(d.trades) ? d.trades : [];
+      S.plans  = Array.isArray(d.plans)  ? d.plans  : [];
+    }
+  }catch(e){ console.warn("Stand nicht lesbar", e); }
+}
+function save(){
+  try{ localStorage.setItem(KEY, JSON.stringify(S)); }
+  catch(e){ toast("Speichern fehlgeschlagen — Browserspeicher voll oder gesperrt"); }
+}
+const uid = () => Math.random().toString(36).slice(2,10) + Date.now().toString(36);
+
+/* ================= Formate ================= */
+const nfEur = new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR"});
+const nfNum = new Intl.NumberFormat("de-DE",{maximumFractionDigits:8});
+const nfPct = new Intl.NumberFormat("de-DE",{minimumFractionDigits:1,maximumFractionDigits:1});
+const eur = n => nfEur.format(Number.isFinite(n)?n:0);
+const qty = n => nfNum.format(Number.isFinite(n)?n:0);
+const pct = n => (n>0?"+":"") + nfPct.format(n) + " %";
+const pctPlain = n => nfPct.format(n) + " %";
+const dateDE = iso => { const d=new Date(iso+"T00:00:00"); return isNaN(d)?iso:
+  String(d.getDate()).padStart(2,"0")+"."+String(d.getMonth()+1).padStart(2,"0")+"."+d.getFullYear(); };
+const todayISO = () => new Date().toISOString().slice(0,10);
+
+function num(v){
+  if(typeof v === "number") return v;
+  if(!v) return NaN;
+  const s = String(v).trim().replace(/\s/g,"").replace(/\./g,"").replace(",",".");
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : NaN;
+}
+const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+
+function toast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove("show"), 2600);
+}
+
+/* ================= FIFO ================= */
+function compute(){
+  const byAsset = {};
+  const realized = [];
+  S.assets.forEach(a => byAsset[a.id] = { asset:a, lots:[], qty:0, cost:0 });
+
+  const sorted = S.trades.slice().sort((a,b)=>
+    a.date === b.date ? (a.seq||0)-(b.seq||0) : (a.date < b.date ? -1 : 1));
+
+  for(const t of sorted){
+    const p = byAsset[t.assetId];
+    if(!p) continue;
+    if(t.side === "buy"){
+      p.lots.push({ tradeId:t.id, date:t.date, qty:t.qty, left:t.qty,
+        unit: t.qty>0 ? (t.qty*t.price + (t.fee||0))/t.qty : 0 });
+    } else {
+      let rest = t.qty, costOut = 0;
+      let freeProceeds = 0, taxedProceeds = 0, freeCost = 0, taxedCost = 0;
+      while(rest > 1e-12 && p.lots.length){
+        const lot = p.lots[0];
+        const take = Math.min(lot.left, rest);
+        const c = take * lot.unit;
+        costOut += c;
+        const part = take * t.price;
+        if(isPastYear(lot.date, t.date)){ freeProceeds += part; freeCost += c; }
+        else { taxedProceeds += part; taxedCost += c; }
+        lot.left -= take; rest -= take;
+        if(lot.left <= 1e-12) p.lots.shift();
+      }
+      const gross = t.qty * t.price;
+      const proceeds = gross - (t.fee||0);
+      const shareFree = gross>0 ? freeProceeds/gross : 0;
+      const feeFree = (t.fee||0) * shareFree;
+      const feeTaxed = (t.fee||0) - feeFree;
+      realized.push({
+        trade:t, asset:p.asset, proceeds, cost:costOut, pl: proceeds - costOut,
+        unmatched: rest > 1e-9 ? rest : 0,
+        taxFreePl: p.asset.type==="crypto" ? (freeProceeds - freeCost - feeFree) : 0,
+        taxablePl: p.asset.type==="crypto" ? (taxedProceeds - taxedCost - feeTaxed) : (proceeds - costOut)
+      });
+    }
+  }
+
+  for(const id in byAsset){
+    const p = byAsset[id];
+    p.qty  = p.lots.reduce((s,l)=>s+l.left,0);
+    p.cost = p.lots.reduce((s,l)=>s+l.left*l.unit,0);
+    p.avg  = p.qty>0 ? p.cost/p.qty : 0;
+    p.price = Number.isFinite(p.asset.price) ? p.asset.price : 0;
+    p.value = p.qty * p.price;
+    p.pl = p.value - p.cost;
+    p.plPct = p.cost>0 ? (p.pl/p.cost)*100 : 0;
+  }
+  const open = Object.values(byAsset).filter(p => p.qty > 1e-10);
+  return { byAsset, open, realized };
+}
+
+function isPastYear(buyISO, refISO){
+  const b = new Date(buyISO+"T00:00:00");
+  const r = new Date((refISO||todayISO())+"T00:00:00");
+  const f = new Date(b); f.setFullYear(f.getFullYear()+1);
+  return r >= f;
+}
+function freeDate(buyISO){
+  const b = new Date(buyISO+"T00:00:00");
+  const f = new Date(b); f.setFullYear(f.getFullYear()+1);
+  return f;
+}
+const daysBetween = (a,b) => Math.round((b-a)/86400000);
+
+/* ================= Farben ================= */
+const C_KRYPTO = ["#F0B429","#E07A4E","#EFCB7A","#C4762F","#F5DFA3","#9E6B2E"];
+const C_AKTIEN = ["#6FB3D9","#B58BC4","#79D2AE","#4E8CB5","#D0C0DE","#A8CEE4"];
+const REST = "#5C7C96";
+
+/* Kuchen bauen; ab 7 Werten wird der Rest zusammengefasst */
+function slicesFor(list, palette){
+  const sorted = list.slice().sort((a,b)=>b.value-a.value);
+  if(sorted.length <= 6){
+    return sorted.map((p,i)=>({label:p.asset.symbol, value:p.value, color:palette[i%palette.length], id:p.asset.id}));
+  }
+  const head = sorted.slice(0,5).map((p,i)=>({label:p.asset.symbol,value:p.value,color:palette[i%palette.length],id:p.asset.id}));
+  const restVal = sorted.slice(5).reduce((s,p)=>s+p.value,0);
+  head.push({label:"Übrige ("+(sorted.length-5)+")", value:restVal, color:REST, id:null});
+  return head;
+}
+
+function donut(slices, total, size){
+  if(!(total>0)) return "";
+  let off = 0;
+  const r = 45, sw = 24;
+  const circles = slices.map(s=>{
+    const share = s.value/total*100;
+    const c = '<circle cx="60" cy="60" r="'+r+'" fill="none" stroke="'+s.color+'" stroke-width="'+sw+
+      '" pathLength="100" stroke-dasharray="'+share.toFixed(3)+' '+(100-share).toFixed(3)+
+      '" stroke-dashoffset="'+(-off).toFixed(3)+'" transform="rotate(-90 60 60)"><title>'+
+      esc(s.label)+' '+pctPlain(share)+'</title></circle>';
+    off += share;
+    return c;
+  }).join("");
+  return '<svg viewBox="0 0 120 120" width="'+size+'" height="'+size+
+    '" role="img" aria-label="Aufteilung"><circle cx="60" cy="60" r="'+r+
+    '" fill="none" stroke="#1D3C58" stroke-width="'+sw+'"/>'+circles+'</svg>';
+}
+
+/* ================= Rendern ================= */
+function render(){
+  const c = compute();
+  renderHead(c);
+  renderKammern(c);
+  renderHoldings(c);
+  renderFristen(c);
+  renderPlans();
+  renderJournal(c);
+  renderAssets();
+}
+
+function renderHead(c){
+  const total = c.open.reduce((s,p)=>s+p.value,0);
+  const cost  = c.open.reduce((s,p)=>s+p.cost,0);
+  const pl = total - cost;
+  document.getElementById("total").textContent = eur(total);
+  const el = document.getElementById("openPl");
+  el.textContent = (pl>0?"+":"") + eur(pl);
+  el.className = "total-sm " + (Math.abs(pl)<.005 ? "" : (pl>0?"up":"down"));
+  const missing = c.open.filter(p=>!p.price).length;
+  document.getElementById("openSub").textContent =
+    !c.open.length ? "Noch nichts gebucht"
+    : missing ? missing + (missing===1?" Position ohne Kurs":" Positionen ohne Kurs")
+    : "Einsatz " + eur(cost) + (cost>0 ? " · " + pct(pl/cost*100) : "");
+
+  const kr = c.open.filter(p=>p.asset.type==="crypto").reduce((s,p)=>s+p.value,0);
+  const ak = c.open.filter(p=>p.asset.type!=="crypto").reduce((s,p)=>s+p.value,0);
+  const sp = document.getElementById("split");
+  const spk = document.getElementById("splitkey");
+  if(kr+ak <= 0){
+    sp.innerHTML = "";
+    spk.innerHTML = "<span>Krypto —</span><span>Aktien —</span>";
+  } else {
+    sp.innerHTML = (kr>0?'<i style="flex:'+kr+';background:var(--gold)"></i>':"")+
+                   (ak>0?'<i style="flex:'+ak+';background:var(--blue)"></i>':"");
+    spk.innerHTML = '<span>Krypto '+pctPlain(kr/(kr+ak)*100)+'</span>'+
+                    '<span>Aktien '+pctPlain(ak/(kr+ak)*100)+'</span>';
+  }
+}
+
+function renderKammern(c){
+  const totalAll = c.open.reduce((s,p)=>s+p.value,0);
+  kammer("kamKrypto", c.open.filter(p=>p.asset.type==="crypto"), C_KRYPTO, totalAll, "Noch keine Kryptowährung im Bestand");
+  kammer("kamAktien", c.open.filter(p=>p.asset.type!=="crypto"), C_AKTIEN, totalAll, "Noch keine Aktien im Bestand");
+}
+
+function kammer(elId, list, palette, totalAll, emptyMsg){
+  const el = document.getElementById(elId);
+  const sum = list.reduce((s,p)=>s+p.value,0);
+  const cost = list.reduce((s,p)=>s+p.cost,0);
+  const pl = sum - cost;
+  if(!list.length || sum<=0){
+    el.innerHTML = '<div class="hollow">'+emptyMsg+'</div>';
+    return;
+  }
+  const sl = slicesFor(list, palette);
+  el.innerHTML =
+    donut(sl, sum, 116) +
+    '<div class="kv">'+eur(sum)+'</div>'+
+    '<div class="kp">'+(totalAll>0 ? pctPlain(sum/totalAll*100)+" des Depots" : "")+'</div>'+
+    '<div class="kpl '+(Math.abs(pl)<.005?"":(pl>0?"up":"down"))+'">'+
+      (pl>0?"+":"")+eur(pl)+(cost>0?" · "+pct(pl/cost*100):"")+'</div>'+
+    '<div class="klegend">'+ sl.map(s=>
+      '<button type="button" '+(s.id?'data-focus="'+s.id+'"':'disabled style="cursor:default"')+'>'+
+        '<i style="background:'+s.color+'"></i><span>'+esc(s.label)+'</span>'+
+        '<span class="sp"></span><span class="r">'+pctPlain(s.value/sum*100)+'</span></button>').join("")+
+    '</div>';
+}
+
+function renderHoldings(c){
+  const el = document.getElementById("holdings");
+  if(!c.open.length){
+    el.innerHTML = '<div class="empty"><p>Noch nichts gebucht. Der erste Kauf legt den Wert automatisch an — Kürzel, Menge, Kurs, fertig.</p>'+
+      '<button class="btn" data-add-trade>Ersten Trade buchen</button></div>';
+    return;
+  }
+  const totalAll = c.open.reduce((s,p)=>s+p.value,0);
+  const colorOf = {};
+  ["crypto","stock"].forEach(kind=>{
+    const list = c.open.filter(p => kind==="crypto" ? p.asset.type==="crypto" : p.asset.type!=="crypto");
+    const pal = kind==="crypto" ? C_KRYPTO : C_AKTIEN;
+    slicesFor(list, pal).forEach(s=>{ if(s.id) colorOf[s.id]=s.color; });
+  });
+
+  el.innerHTML = c.open.slice().sort((a,b)=>b.value-a.value).map(p=>{
+    const has = p.price>0;
+    const cls = Math.abs(p.pl)<.005 ? "" : (p.pl>0?"up":"down");
+    return '<div class="hold" id="hold-'+p.asset.id+'">'+
+      '<div>'+
+        '<div class="name"><i style="background:'+(colorOf[p.asset.id]||REST)+'"></i>'+esc(p.asset.symbol)+'</div>'+
+        '<div class="meta">'+esc(p.asset.name||(p.asset.type==="crypto"?"Kryptowährung":"Aktie"))+
+          ' · '+qty(p.qty)+' Stück · Einstand '+eur(p.avg)+' je Stück'+
+          (totalAll>0 && has ? ' · '+pctPlain(p.value/totalAll*100)+' des Depots' : '')+'</div>'+
+      '</div>'+
+      '<div class="val"><b>'+(has?eur(p.value):"—")+'</b>'+
+        '<span class="'+cls+'">'+(has ? (p.pl>0?"+":"")+eur(p.pl)+" · "+pct(p.plPct) : "Kurs fehlt")+'</span></div>'+
+      '<div class="acts">'+
+        '<div class="px"><label for="px-'+p.asset.id+'">Kurs je Stück</label>'+
+          '<input id="px-'+p.asset.id+'" inputmode="decimal" data-price="'+p.asset.id+'" value="'+
+            (p.price ? String(p.price).replace(".",",") : "")+'" placeholder="0,00"></div>'+
+        '<span class="spacer"></span>'+
+        '<button class="btn-ghost btn-sm" data-quick-buy="'+p.asset.id+'">Nachkaufen</button>'+
+        '<button class="btn-ghost btn-sm" data-quick-sell="'+p.asset.id+'">Verkaufen</button>'+
+      '</div>'+
+    '</div>';
+  }).join("");
+}
+
+function renderFristen(c){
+  const el = document.getElementById("fristen");
+  const rows = [];
+  c.open.forEach(p=>{ if(p.asset.type==="crypto") p.lots.forEach(l=>rows.push({p,l})); });
+  if(!rows.length){
+    el.innerHTML = '<div class="empty">Hier erscheint jeder Krypto-Kauf mit eigener Jahresfrist, sobald du einen gebucht hast.</div>';
+    return;
+  }
+  rows.sort((a,b)=> a.l.date < b.l.date ? -1 : 1);
+  const now = new Date();
+  el.innerHTML = rows.map(({p,l})=>{
+    const f = freeDate(l.date);
+    const fISO = f.toISOString().slice(0,10);
+    const start = new Date(l.date+"T00:00:00");
+    const total = daysBetween(start, f);
+    const done = Math.min(total, Math.max(0, daysBetween(start, now)));
+    const rest = Math.max(0, daysBetween(now, f));
+    const isFree = now >= f;
+    const share = total>0 ? Math.min(100, done/total*100) : 100;
+    return '<div class="fr">'+
+      '<div class="frtop">'+
+        '<span><b>'+esc(p.asset.symbol)+'</b> '+qty(l.left)+' <em>· gekauft '+dateDE(l.date)+' zu '+eur(l.unit)+'</em></span>'+
+        '<span class="'+(isFree?"up":"")+'">'+(isFree ? "über ein Jahr gehalten"
+          : "noch "+rest+(rest===1?" Tag":" Tage"))+'</span>'+
+      '</div>'+
+      '<div class="frbar"><i class="'+(isFree?"done":"")+'" style="width:'+share+'%"></i></div>'+
+      '<div class="frscale"><span>'+dateDE(l.date)+'</span><span>'+
+        (isFree?"frei seit ":"frei ab ")+dateDE(fISO)+'</span></div>'+
+    '</div>';
+  }).join("");
+}
+
+function renderPlans(){
+  const el = document.getElementById("plans");
+  if(!S.plans.length){
+    el.innerHTML = '<div class="empty"><p>Keine Beobachtungen. Leg einen Wert an, den du kaufen willst, sobald der Kurs stimmt.</p>'+
+      '<button class="btn-ghost" data-add-plan>Erste Beobachtung anlegen</button></div>';
+    return;
+  }
+  el.innerHTML = S.plans.map(pl=>{
+    const ok = Number.isFinite(pl.price) && Number.isFinite(pl.entry) && pl.entry>0;
+    const dist = ok ? (pl.price - pl.entry)/pl.entry*100 : null;
+    const hit = ok && pl.price <= pl.entry;
+    const meta = [];
+    if(Number.isFinite(pl.price)) meta.push("aktuell "+eur(pl.price));
+    if(Number.isFinite(pl.qtyPlan)) meta.push("geplant "+qty(pl.qtyPlan)+" Stück");
+    if(Number.isFinite(pl.stop)) meta.push("Stop "+eur(pl.stop));
+    if(Number.isFinite(pl.target)) meta.push("Ziel "+eur(pl.target));
+    return '<div class="plan">'+
+      '<div class="plantop">'+
+        '<span><b>'+esc(pl.symbol)+'</b> <em>· '+(pl.type==="crypto"?"Krypto":"Aktie")+
+          (Number.isFinite(pl.entry)?" · Wunschkurs "+eur(pl.entry):"")+'</em></span>'+
+        '<span class="gap '+(hit?"hit":"")+'">'+(ok ? (hit?"Wunschkurs erreicht":pct(dist)) : "Kurse ergänzen")+'</span>'+
+      '</div>'+
+      (meta.length?'<div class="planmeta">'+esc(meta.join(" · "))+'</div>':"")+
+      (pl.note?'<div class="plannote">'+esc(pl.note)+'</div>':"")+
+      '<div class="planacts">'+
+        '<button class="btn-ghost btn-sm" data-plan-buy="'+pl.id+'">Als Kauf buchen</button>'+
+        '<button class="btn-ghost btn-sm" data-plan-edit="'+pl.id+'">Bearbeiten</button>'+
+        '<button class="btn-ghost btn-sm btn-danger" data-plan-del="'+pl.id+'">Entfernen</button>'+
+      '</div>'+
+    '</div>';
+  }).join("");
+}
+
+function renderJournal(c){
+  const st = document.getElementById("stats");
+  const el = document.getElementById("journal");
+  const realTotal = c.realized.reduce((s,r)=>s+r.pl,0);
+  const free = c.realized.reduce((s,r)=>s+(r.asset.type==="crypto"?r.taxFreePl:0),0);
+  const yr = new Date().getFullYear();
+  const taxed = c.realized.reduce((s,r)=>
+    s+(r.asset.type==="crypto" && Number(r.trade.date.slice(0,4))===yr ? r.taxablePl : 0),0);
+
+  st.innerHTML =
+    '<div><span>Realisiert insgesamt</span><b class="'+(realTotal>0?"up":realTotal<0?"down":"")+'">'+
+      (realTotal>0?"+":"")+eur(realTotal)+'</b></div>'+
+    '<div><span>Krypto nach über einem Jahr</span><b>'+(free>0?"+":"")+eur(free)+'</b></div>'+
+    '<div><span>Krypto unter einem Jahr, '+yr+'</span><b>'+(taxed>0?"+":"")+eur(taxed)+'</b></div>'+
+    '<div><span>Buchungen</span><b>'+S.trades.length+'</b></div>';
+
+  if(!S.trades.length){
+    el.innerHTML = '<div class="empty" style="padding-top:14px">Das Tagebuch ist leer. Jede Buchung landet hier, mit deiner Notiz dazu.</div>';
+    return;
+  }
+  const rmap = {}; c.realized.forEach(r => rmap[r.trade.id] = r);
+  const rows = S.trades.slice().sort((a,b)=>
+    a.date === b.date ? (b.seq||0)-(a.seq||0) : (a.date < b.date ? 1 : -1));
+
+  el.innerHTML = rows.map(t=>{
+    const a = S.assets.find(x=>x.id===t.assetId);
+    const gross = t.qty*t.price;
+    const amount = t.side==="buy" ? gross+(t.fee||0) : gross-(t.fee||0);
+    const r = rmap[t.id];
+    let res = "";
+    if(r){
+      const cls = r.pl>0?"up":r.pl<0?"down":"";
+      const isFree = a && a.type==="crypto" && Math.abs(r.taxFreePl)>.005 && Math.abs(r.taxablePl)<.005;
+      res = ' · <span class="'+cls+'">'+(r.pl>0?"+":"")+eur(r.pl)+'</span>'+
+        (isFree?' <span class="tag free">über ein Jahr</span>':"")+
+        (r.unmatched?' <span class="tag">'+qty(r.unmatched)+' ohne Kauf</span>':"");
+    }
+    return '<div class="jr">'+
+      '<div class="jrtop">'+
+        '<span><b class="'+(t.side==="buy"?"buy":"sell")+'">'+(t.side==="buy"?"Kauf":"Verkauf")+'</b> '+
+          esc(a?a.symbol:"?")+' '+qty(t.qty)+' zu '+eur(t.price)+'</span>'+
+        '<span class="lbl" style="margin:0">'+dateDE(t.date)+'</span>'+
+      '</div>'+
+      '<div class="jrmeta">Betrag '+eur(amount)+(t.fee?' · Gebühr '+eur(t.fee):"")+res+'</div>'+
+      (t.note?'<div class="jrnote">'+esc(t.note)+'</div>':"")+
+      '<div class="planacts"><button class="btn-ghost btn-sm btn-danger" data-trade-del="'+t.id+'">Buchung löschen</button></div>'+
+    '</div>';
+  }).join("");
+}
+
+function renderAssets(){
+  const el = document.getElementById("assets");
+  if(!S.assets.length){ el.innerHTML = ""; return; }
+  el.innerHTML = '<div class="lbl" style="margin-bottom:8px">Erfasste Werte</div>' +
+    S.assets.slice().sort((a,b)=>a.symbol.localeCompare(b.symbol)).map(a=>{
+      const used = S.trades.filter(t=>t.assetId===a.id).length;
+      return '<div class="plantop" style="padding:7px 0;border-bottom:1px solid var(--line)">'+
+        '<span><b>'+esc(a.symbol)+'</b> <em>· '+(a.type==="crypto"?"Krypto":"Aktie")+
+          (a.name?" · "+esc(a.name):"")+' · '+(a.price?eur(a.price):"kein Kurs")+'</em></span>'+
+        (used ? '<span class="tag">'+used+(used===1?" Buchung":" Buchungen")+'</span>'
+              : '<button class="btn-ghost btn-sm btn-danger" data-asset-del="'+a.id+'">Löschen</button>')+
+      '</div>';
+    }).join("");
+}
+
+/* ================= Dialog Trade ================= */
+const dlgTrade = document.getElementById("dlgTrade");
+const selAsset = document.getElementById("tAsset");
+
+function fillAssetSelect(pre){
+  selAsset.innerHTML = '<option value="__new">Neuer Wert …</option>' +
+    S.assets.slice().sort((a,b)=>a.symbol.localeCompare(b.symbol)).map(a=>
+      '<option value="'+a.id+'">'+esc(a.symbol)+(a.name?" — "+esc(a.name):"")+'</option>').join("");
+  selAsset.value = (pre && S.assets.some(a=>a.id===pre)) ? pre : "__new";
+  toggleNew();
+}
+function toggleNew(){
+  document.getElementById("newAssetBox").style.display = selAsset.value==="__new" ? "block" : "none";
+}
+selAsset.addEventListener("change", toggleNew);
+
+function openTrade(o){
+  o = o || {};
+  fillAssetSelect(o.assetId);
+  document.getElementById("tSide").value = o.side || "buy";
+  document.getElementById("tDate").value = todayISO();
+  document.getElementById("tQty").value = o.qty!=null ? String(o.qty).replace(".",",") : "";
+  document.getElementById("tPrice").value = o.price!=null ? String(o.price).replace(".",",") : "";
+  document.getElementById("tFee").value = "";
+  document.getElementById("tNote").value = o.note || "";
+  document.getElementById("tSymbol").value = o.symbol || "";
+  document.getElementById("tName").value = o.name || "";
+  document.getElementById("tType").value = o.type || "stock";
+  document.getElementById("tradeErr").textContent = "";
+  document.getElementById("tradeTitle").textContent = o.side==="sell" ? "Verkauf buchen" : "Trade buchen";
+  dlgTrade.showModal();
+}
+
+document.getElementById("tradeSave").addEventListener("click", ()=>{
+  const err = document.getElementById("tradeErr");
+  const side = document.getElementById("tSide").value;
+  const date = document.getElementById("tDate").value;
+  const q = num(document.getElementById("tQty").value);
+  const p = num(document.getElementById("tPrice").value);
+  const feeRaw = document.getElementById("tFee").value.trim();
+  const fee = feeRaw ? num(feeRaw) : 0;
+
+  if(!date){ err.textContent = "Datum fehlt."; return; }
+  if(!Number.isFinite(q) || q<=0){ err.textContent = "Menge muss größer als null sein."; return; }
+  if(!Number.isFinite(p) || p<0){ err.textContent = "Kurs ist keine gültige Zahl."; return; }
+  if(!Number.isFinite(fee) || fee<0){ err.textContent = "Gebühr ist keine gültige Zahl."; return; }
+
+  let assetId = selAsset.value;
+  if(assetId === "__new"){
+    const sym = document.getElementById("tSymbol").value.trim().toUpperCase();
+    if(!sym){ err.textContent = "Kürzel fehlt — zum Beispiel SAP oder BTC."; return; }
+    const ex = S.assets.find(a=>a.symbol===sym);
+    if(ex){ assetId = ex.id; }
+    else{
+      const a = { id:uid(), symbol:sym, name:document.getElementById("tName").value.trim(),
+        type:document.getElementById("tType").value, price:p||null };
+      S.assets.push(a); assetId = a.id;
+    }
+  }
+  if(side === "sell"){
+    const held = compute().byAsset[assetId];
+    const have = held ? held.qty : 0;
+    if(q > have + 1e-9){ err.textContent = "Du hältst nur "+qty(have)+" Stück. Prüf Menge oder Datum."; return; }
+  }
+
+  S.trades.push({ id:uid(), assetId, side, date, qty:q, price:p, fee,
+    note:document.getElementById("tNote").value.trim(), seq:Date.now() });
+  const a = S.assets.find(x=>x.id===assetId);
+  if(a && p>0) a.price = p;
+
+  save(); render(); dlgTrade.close();
+  toast(side==="buy" ? "Kauf gebucht" : "Verkauf gebucht");
+});
+
+/* ================= Dialog Beobachtung ================= */
+const dlgPlan = document.getElementById("dlgPlan");
+let editPlanId = null;
+const PF = {price:"pPrice", entry:"pEntry", qtyPlan:"pQty", stop:"pStop", target:"pTarget"};
+
+function openPlan(id){
+  editPlanId = id || null;
+  const pl = id ? S.plans.find(x=>x.id===id) : null;
+  document.getElementById("planTitle").textContent = pl ? "Beobachtung bearbeiten" : "Beobachtung anlegen";
+  document.getElementById("pSymbol").value = pl ? pl.symbol : "";
+  document.getElementById("pName").value = pl ? (pl.name||"") : "";
+  document.getElementById("pType").value = pl ? pl.type : "stock";
+  for(const k in PF){
+    const v = pl ? pl[k] : null;
+    document.getElementById(PF[k]).value = (v==null || Number.isNaN(v)) ? "" : String(v).replace(".",",");
+  }
+  document.getElementById("pNote").value = pl ? (pl.note||"") : "";
+  document.getElementById("planErr").textContent = "";
+  dlgPlan.showModal();
+}
+
+document.getElementById("planSave").addEventListener("click", ()=>{
+  const err = document.getElementById("planErr");
+  const sym = document.getElementById("pSymbol").value.trim().toUpperCase();
+  if(!sym){ err.textContent = "Kürzel fehlt."; return; }
+  const rec = { id: editPlanId || uid(), symbol:sym,
+    name: document.getElementById("pName").value.trim(),
+    type: document.getElementById("pType").value,
+    note: document.getElementById("pNote").value.trim() };
+  for(const k in PF){
+    const raw = document.getElementById(PF[k]).value.trim();
+    rec[k] = raw ? num(raw) : NaN;
+    if(raw && !Number.isFinite(rec[k])){ err.textContent = "Ein Zahlenfeld ist nicht lesbar."; return; }
+  }
+  if(editPlanId) S.plans = S.plans.map(p => p.id===editPlanId ? rec : p);
+  else S.plans.push(rec);
+  save(); render(); dlgPlan.close();
+  toast(editPlanId ? "Beobachtung aktualisiert" : "Beobachtung angelegt");
+});
+
+document.querySelectorAll("dialog [data-close]").forEach(b=>
+  b.addEventListener("click", ()=> b.closest("dialog").close()));
+
+/* ================= Klicks ================= */
+document.addEventListener("click", e=>{
+  const t = e.target.closest("button");
+  if(!t) return;
+
+  if(t.hasAttribute("data-add-trade")) return openTrade();
+  if(t.hasAttribute("data-add-plan")) return openPlan();
+
+  const f = t.dataset.focus;
+  if(f){
+    const row = document.getElementById("hold-"+f);
+    if(row){ row.scrollIntoView({behavior:"smooth", block:"center"}); }
+    return;
+  }
+  const qb = t.dataset.quickBuy;
+  if(qb){ const a = S.assets.find(x=>x.id===qb); return openTrade({assetId:qb, side:"buy", price:a&&a.price?a.price:null}); }
+  const qs = t.dataset.quickSell;
+  if(qs){ const a = S.assets.find(x=>x.id===qs); return openTrade({assetId:qs, side:"sell", price:a&&a.price?a.price:null}); }
+
+  const pb = t.dataset.planBuy;
+  if(pb){
+    const pl = S.plans.find(x=>x.id===pb); if(!pl) return;
+    const ex = S.assets.find(a=>a.symbol===pl.symbol);
+    return openTrade({ assetId: ex?ex.id:null, symbol:pl.symbol, name:pl.name, type:pl.type, side:"buy",
+      qty: Number.isFinite(pl.qtyPlan)?pl.qtyPlan:null,
+      price: Number.isFinite(pl.entry)?pl.entry:(Number.isFinite(pl.price)?pl.price:null),
+      note: pl.note });
+  }
+  const pe = t.dataset.planEdit; if(pe) return openPlan(pe);
+  const pd = t.dataset.planDel;
+  if(pd){
+    const pl = S.plans.find(x=>x.id===pd);
+    if(pl && confirm("Beobachtung „"+pl.symbol+"“ entfernen?")){
+      S.plans = S.plans.filter(x=>x.id!==pd); save(); render(); toast("Beobachtung entfernt");
+    }
+    return;
+  }
+  const td = t.dataset.tradeDel;
+  if(td){
+    if(confirm("Diese Buchung löschen? Bestand und Haltefristen werden neu berechnet.")){
+      S.trades = S.trades.filter(x=>x.id!==td); save(); render(); toast("Buchung gelöscht");
+    }
+    return;
+  }
+  const ad = t.dataset.assetDel;
+  if(ad){
+    if(S.trades.some(x=>x.assetId===ad)){ toast("Der Wert wird noch von Buchungen verwendet"); return; }
+    S.assets = S.assets.filter(x=>x.id!==ad); save(); render(); toast("Wert gelöscht");
+    return;
+  }
+});
+
+/* Kurspflege */
+document.addEventListener("change", e=>{
+  const id = e.target.dataset && e.target.dataset.price;
+  if(!id) return;
+  const a = S.assets.find(x=>x.id===id); if(!a) return;
+  const raw = e.target.value.trim();
+  if(!raw){ a.price = null; }
+  else{
+    const v = num(raw);
+    if(!Number.isFinite(v) || v<0){ toast("Kurs ist keine gültige Zahl"); e.target.focus(); return; }
+    a.price = v;
+  }
+  save(); render();
+});
+document.addEventListener("keydown", e=>{
+  if(e.key==="Enter" && e.target.dataset && e.target.dataset.price) e.target.blur();
+});
+
+/* ================= Daten ================= */
+document.getElementById("btnExport").addEventListener("click", ()=>{
+  const blob = new Blob([JSON.stringify({version:1, exported:new Date().toISOString(), ...S}, null, 2)],
+    {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "handelsbuch-"+todayISO()+".json";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+  toast("Sicherung heruntergeladen");
+});
+
+document.getElementById("fileImport").addEventListener("change", e=>{
+  const f = e.target.files && e.target.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = ()=>{
+    try{
+      const d = JSON.parse(r.result);
+      if(!d || !Array.isArray(d.trades) || !Array.isArray(d.assets)) throw new Error("Format");
+      if(!confirm("Der aktuelle Stand wird ersetzt. Fortfahren?")){ e.target.value=""; return; }
+      S.assets = d.assets; S.trades = d.trades; S.plans = Array.isArray(d.plans)?d.plans:[];
+      save(); render(); toast("Sicherung eingelesen");
+    }catch(err){
+      toast("Datei nicht lesbar — erwartet wird eine Sicherung aus diesem Handelsbuch");
+    }
+    e.target.value = "";
+  };
+  r.onerror = ()=>{ toast("Datei konnte nicht gelesen werden"); e.target.value=""; };
+  r.readAsText(f);
+});
+
+document.getElementById("btnReset").addEventListener("click", ()=>{
+  if(!confirm("Alle Trades, Kurse und Beobachtungen löschen? Das lässt sich nicht rückgängig machen.")) return;
+  if(!confirm("Wirklich sicher? Lade vorher eine Sicherung herunter, falls du die Daten behalten willst.")) return;
+  S = {assets:[], trades:[], plans:[]};
+  save(); render(); toast("Handelsbuch geleert");
+});
+
+/* ================= Start ================= */
+load();
+render();
+</script>
+</body>
+</html>
