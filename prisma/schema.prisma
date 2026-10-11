@@ -86,6 +86,7 @@ model PositionMeta {
   instrumentId   String     @unique
   instrument     Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
   thesis         String?
+  thesisStatus   String? // "INTAKT" | "PRÜFEN" | "VERLETZT" – vom Nutzer gepflegt
   horizon        String? // z. B. "5+ Jahre"
   // Nachkaufmarken: [{price:number, currency:string, label:string}]
   rebuyMarks     Json       @default("[]")

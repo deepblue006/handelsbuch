@@ -34,6 +34,8 @@ export interface ComponentScore {
   dataUsed: string[];
   missing: string[];
   asOf: string | null;
+  /** true = für diesen Asset-Typ fachlich nicht anwendbar (z. B. Bewertung bei Krypto) – zählt nicht als fehlend. */
+  notApplicable?: boolean;
 }
 
 /** Baut eine Komponente aus Faktoren: Basis 50, Summe der Punkte, begrenzt auf 0–100. Ohne Faktoren → null. */
@@ -81,8 +83,9 @@ export function aggregateScore(
   rules: RuleEvaluation,
   opts: { isHeld: boolean; thesisIntact: boolean | null; minCompleteness: number },
 ): ScoreResult {
-  const totalWeight = (Object.keys(weights) as ComponentKey[]).reduce((s, k) => s + weights[k], 0);
-  const available = components.filter((c) => c.score != null && weights[c.key] > 0);
+  const na = new Set(components.filter((c) => c.notApplicable).map((c) => c.key));
+  const totalWeight = (Object.keys(weights) as ComponentKey[]).filter((k) => !na.has(k)).reduce((s, k) => s + weights[k], 0);
+  const available = components.filter((c) => c.score != null && !c.notApplicable && weights[c.key] > 0);
   const availWeight = available.reduce((s, c) => s + weights[c.key], 0);
   const completeness = totalWeight > 0 ? availWeight / totalWeight : 0;
   const effectiveWeights: Partial<Record<ComponentKey, number>> = {};
@@ -97,6 +100,7 @@ export function aggregateScore(
   }
   const againstBuying = [...rules.cons.map((r) => `${r.id}: ${r.message}`), ...negatives];
   const warnings = [...rules.conflicts];
+  if (na.size) warnings.push(`Nicht anwendbar und aus der Gewichtung genommen: ${[...na].map((k) => COMPONENT_LABELS[k]).join(", ")}.`);
   if (completeness < 1) warnings.push(`Score unvollständig: ${(completeness * 100).toFixed(0)} % der Gewichte mit Daten hinterlegt; fehlende Komponenten wurden nicht als neutral gezählt.`);
 
   const { state, reason } = deriveState(total, completeness, rules, opts);

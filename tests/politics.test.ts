@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseCongressTrades } from "@/lib/providers/alphavantage";
-import { fromAlphaVantage, checkPlausibility, statusFor, reconcile, orderForIngest, applyActions, dedupeKey, correctionKey, parsePtrText, parseHouseIndexXml, usDateToIso, mapOwner, type NormTx, type StoredTx } from "@/lib/politics/normalize";
+import { assignOccurrences, fromAlphaVantage, checkPlausibility, statusFor, reconcile, orderForIngest, applyActions, dedupeKey, correctionKey, parsePtrText, parseHouseIndexXml, usDateToIso, mapOwner, type NormTx, type StoredTx } from "@/lib/politics/normalize";
 import { loadSnapshot } from "./helpers";
 
 const real = parseCongressTrades(loadSnapshot("CONGRESS_TRADES_NVDA.json")).trades.map(fromAlphaVantage);
@@ -9,7 +9,7 @@ function ingest(rows: NormTx[]) {
   let id = 0;
   let store: StoredTx[] = [];
   const all: ReturnType<typeof reconcile> = [];
-  for (const t of orderForIngest(rows)) {
+  for (const t of orderForIngest(assignOccurrences(rows))) {
     const acts = reconcile(store, [t]);
     store = applyActions(store, acts, () => `id${++id}`);
     all.push(...acts);
@@ -63,11 +63,28 @@ describe("Korrekturen und Deduplizierung (echte Suozzi-Korrekturen vom 19.12.202
     expect(target.amountMin).toBe(100001);
     expect(target.isCurrent).toBe(false);
   });
+  it("identische Zeilen derselben Meldung werden nicht verworfen, sondern markiert (echte Daten: 28 zusätzliche Zeilen)", () => {
+    expect(actions.filter((a) => a.kind === "DUPLICATE").length).toBe(0);
+    // Pete Sessions, 04.05.2021: gleiche Transaktion mit zwei Einreichungsdaten → Prüfung statt Verwerfen
+    const rev = actions.filter((a) => a.kind === "REVIEW");
+    expect(rev.length).toBe(1);
+    expect(rev[0]!.incoming.politicianName).toBe("Pete Sessions");
+    expect(rev[0]!.incoming.uncertaintyFlags.join(" ")).toContain("Formulartext");
+    const flagged = assignOccurrences(real).filter((t) => t.uncertaintyFlags.some((f) => f.includes("identische Zeilen")));
+    expect(flagged.length).toBe(55); // 23 Gruppen identischer Rohzeilen (51) + 2 Paare, die sich nur in der Schreibweise des Asset-Namens/-Codes unterscheiden
+    const second = flagged.find((t) => t.occurrence === 2)!;
+    expect(dedupeKey(second)).not.toBe(dedupeKey({ ...second, occurrence: 1 }));
+  });
   it("erneute Lieferung derselben Daten erzeugt keine Dubletten", () => {
     const before = store.length;
-    const again = reconcile(store, orderForIngest(real).filter((t) => (t.sourceFilingStatus ?? "NEW") !== "AMENDED" && t.sourceFilingStatus !== "DELETED"));
+    const again = reconcile(store, orderForIngest(assignOccurrences(real)).filter((t) => (t.sourceFilingStatus ?? "NEW") !== "AMENDED" && t.sourceFilingStatus !== "DELETED"));
     expect(again.every((a) => a.kind === "DUPLICATE")).toBe(true);
     expect(applyActions(store, again, () => "x").length).toBe(before);
+  });
+  it("erneute Lieferung der Löschmeldung trifft keine andere Meldung", () => {
+    const del = orderForIngest(assignOccurrences(real)).filter((t) => t.sourceFilingStatus === "DELETED");
+    const r = reconcile(store, del);
+    expect(r.map((a) => a.kind)).toEqual(["DUPLICATE"]);
   });
   it("mehrdeutige Korrektur → manuelle Prüfung", () => {
     const base = real.find((t) => t.politicianName === "Gilbert Ray Cisneros, Jr.")!;

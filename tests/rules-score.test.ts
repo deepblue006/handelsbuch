@@ -120,3 +120,13 @@ describe("Kaufsignalscore", () => {
     expect(componentFromFactors("technical", [], [], ["x"], null).score).toBeNull();
   });
 });
+
+describe("Nicht anwendbare Komponenten", () => {
+  it("werden aus der Gewichtung genommen, aber nicht als fehlend gezählt", () => {
+    const e = evaluateRules(baseCtx({ assetType: "CRYPTO" }), DEFAULT_RULE_CONFIG);
+    const c = (key: ComponentScore["key"], score: number | null, notApplicable = false): ComponentScore => ({ key, score, factors: [], dataUsed: [], missing: [], asOf: null, notApplicable });
+    const r = aggregateScore([c("technical", 60), c("fundamental", null, true), c("market", 60), c("operational", null), c("flows", null), c("sentiment", null), c("portfolioFit", 60)], DEFAULT_SCORE_WEIGHTS, e, { isHeld: true, thesisIntact: null, minCompleteness: 0.5 });
+    expect(r.completeness).toBeCloseTo(45 / 80, 10);
+    expect(r.warnings.join(" ")).toContain("Nicht anwendbar");
+  });
+});

@@ -51,6 +51,8 @@ export interface NormTx {
   rawText: string | null;
   uncertaintyFlags: string[];
   extractionConfidence: number | null;
+  /** n-tes Vorkommen einer vollständig identischen Zeile derselben Meldung (1 = einzig/erstes). */
+  occurrence?: number;
 }
 
 /** Offizielle Betragsspannen der Formulare (STOCK Act / Ethics in Government Act). */
@@ -101,6 +103,7 @@ export function fromAlphaVantage(t: AvCongressTrade): NormTx {
   const ticker = (t.symbol || t.ticker_reported || "").trim().toUpperCase() || null;
   if (!ticker) flags.push("Ticker fehlt – Zuordnung zum Wertpapier unsicher");
   if (t.ticker_source && t.ticker_source !== "reported") flags.push(`Ticker nicht gemeldet, sondern abgeleitet (${t.ticker_source})`);
+  if (/FILING STATUS|SUBHOLDING OF|DESCRIPTION:/i.test(t.asset_name)) flags.push("Asset-Bezeichnung enthält Formulartext – Extraktion der Quelle vermutlich fehlerhaft");
   const min = t.amount_min != null ? Number(t.amount_min) : null;
   const max = t.amount_max != null ? Number(t.amount_max) : null;
   return {
@@ -166,9 +169,10 @@ export function checkPlausibility(t: NormTx, today: string): PlausibilityResult 
 }
 
 export function statusFor(t: NormTx, p: PlausibilityResult): { status: RecordStatus; needsReview: boolean } {
-  if (t.source === "ALPHAVANTAGE_SECONDARY") return { status: "SEKUNDAERQUELLE", needsReview: !p.ok };
+  if (t.source === "ALPHAVANTAGE_SECONDARY") return { status: "SEKUNDAERQUELLE", needsReview: !p.ok || t.uncertaintyFlags.some((f) => f.includes("identische Zeilen")) };
   if (!p.ok) return { status: "UNVOLLSTAENDIG", needsReview: true };
   if (!t.ticker || (t.extractionConfidence != null && t.extractionConfidence < 0.8)) return { status: "NICHT_EINDEUTIG", needsReview: true };
+  if ((t.occurrence ?? 1) > 1) return { status: "NICHT_EINDEUTIG", needsReview: true };
   return { status: "AUTOMATISCH_PLAUSIBILISIERT", needsReview: t.uncertaintyFlags.length > 0 };
 }
 
@@ -186,7 +190,32 @@ export function correctionKey(t: NormTx): string {
 
 /** Identitätsschlüssel inkl. Typ und Betragsspanne – erkennt exakte Doppelmeldungen. */
 export function dedupeKey(t: NormTx): string {
-  return createHash("sha256").update([correctionKey(t), t.txType, t.amountMin ?? "", t.amountMax ?? ""].join("|")).digest("hex").slice(0, 32);
+  const occ = t.occurrence && t.occurrence > 1 ? `#${t.occurrence}` : "";
+  return createHash("sha256").update([correctionKey(t), t.txType, t.amountMin ?? "", t.amountMax ?? ""].join("|") + occ).digest("hex").slice(0, 32);
+}
+
+/**
+ * Vollständig identische Zeilen innerhalb einer Lieferung (gleiche Person, Wert, Datum, Typ, Spanne,
+ * Einreichung) können mehrere echte Transaktionen ODER eine Doppelung sein. Sie werden nicht verworfen,
+ * sondern nummeriert, markiert und zur manuellen Prüfung vorgelegt.
+ */
+export function assignOccurrences(rows: NormTx[]): NormTx[] {
+  const groups = new Map<string, NormTx[]>();
+  for (const r of rows) {
+    const k = `${dedupeKey({ ...r, occurrence: 1 })}|${r.filedDate}|${r.sourceFilingStatus ?? "NEW"}`;
+    const g = groups.get(k);
+    if (g) g.push(r);
+    else groups.set(k, [r]);
+  }
+  const out: NormTx[] = [];
+  for (const g of groups.values()) {
+    g.forEach((r, i) => out.push({
+      ...r,
+      occurrence: i + 1,
+      uncertaintyFlags: g.length > 1 ? [...r.uncertaintyFlags, `${g.length} identische Zeilen in derselben Meldung (Nr. ${i + 1}) – mehrere Transaktionen oder Doppelung; Originaldokument prüfen`] : r.uncertaintyFlags,
+    }));
+  }
+  return out;
 }
 
 export interface StoredTx {
@@ -241,13 +270,18 @@ export function reconcile(existing: StoredTx[], incoming: NormTx[]): ReconcileAc
     seen.add(seenKey);
     const earlier = current.filter((e) => e.correctionKey === ck && (!t.filedDate || !e.filedDate || e.filedDate <= t.filedDate));
     if (st === "DELETED") {
-      const c = narrow(earlier, t);
-      if (c.length === 1) actions.push({ kind: "DELETE_MARK", incoming: t, dedupeKey: dk, targets: [c[0]!.id], version: c[0]!.version + 1, reason: "Quelle meldet Löschung" });
-      else actions.push({ kind: "REVIEW", incoming: t, dedupeKey: dk, targets: c.map((s) => s.id), version: 1, reason: c.length ? "Löschung nicht eindeutig zuordenbar" : "Löschung ohne bekannte Originalmeldung" });
+      // Löschungen nur bei exakter Betragsübereinstimmung zuordnen
+      const exactAmt = (e: StoredTx) => e.amountMin === t.amountMin && e.amountMax === t.amountMax;
+      const already = existing.filter((e) => !e.isCurrent && e.correctionKey === ck && exactAmt(e));
+      const c = earlier.filter(exactAmt);
+      const pick = c.length > 1 ? c.filter((e) => e.txType === t.txType) : c;
+      if (pick.length === 1) actions.push({ kind: "DELETE_MARK", incoming: t, dedupeKey: dk, targets: [pick[0]!.id], version: pick[0]!.version + 1, reason: "Quelle meldet Löschung" });
+      else if (pick.length === 0 && already.length) actions.push({ kind: "DUPLICATE", incoming: t, dedupeKey: dk, targets: already.map((a) => a.id), version: 0, reason: "Löschung bereits verarbeitet" });
+      else actions.push({ kind: "REVIEW", incoming: t, dedupeKey: dk, targets: pick.map((x) => x.id), version: 1, reason: pick.length ? "Löschung nicht eindeutig zuordenbar" : "Löschung ohne passende Originalmeldung" });
       continue;
     }
     // Identitätsprüfung gegen ALLE Fassungen (auch ersetzte), damit erneute Lieferungen keine Dubletten erzeugen
-    const exact = existing.find((e) => e.dedupeKey === dk && e.filedDate === t.filedDate);
+    const exact = existing.find((e) => (e.dedupeKey === dk || e.dedupeKey === `${dk}@${t.filedDate ?? "?"}`) && e.filedDate === t.filedDate);
     if (exact) { actions.push({ kind: "DUPLICATE", incoming: t, dedupeKey: dk, targets: [exact.id], version: exact.version, reason: "Bereits erfasst" }); continue; }
     if (st === "AMENDED") {
       const c = narrow(earlier.filter((e) => e.filedDate !== t.filedDate), t);
@@ -257,7 +291,7 @@ export function reconcile(existing: StoredTx[], incoming: NormTx[]): ReconcileAc
       continue;
     }
     const sameIdentity = current.find((e) => e.dedupeKey === dk);
-    if (sameIdentity) { actions.push({ kind: "DUPLICATE", incoming: t, dedupeKey: dk, targets: [sameIdentity.id], version: sameIdentity.version, reason: "Gleiche Meldung mit anderem Einreichungsdatum – als Duplikat behandelt, bitte prüfen" }); continue; }
+    if (sameIdentity) { actions.push({ kind: "REVIEW", incoming: t, dedupeKey: `${dk}@${t.filedDate ?? "?"}`, targets: [sameIdentity.id], version: 1, reason: `Gleiche Transaktion bereits mit Einreichung vom ${sameIdentity.filedDate ?? "?"} erfasst – Nachmeldung oder Doppelung? Originaldokumente prüfen` }); continue; }
     actions.push({ kind: "INSERT", incoming: t, dedupeKey: dk, targets: [], version: 1, reason: "Neue Meldung" });
   }
   return actions;
@@ -266,7 +300,7 @@ export function reconcile(existing: StoredTx[], incoming: NormTx[]): ReconcileAc
 /** Reihenfolge für die Verarbeitung: neue Meldungen (nach Einreichung) vor Korrekturen und Löschungen. */
 export function orderForIngest(rows: NormTx[]): NormTx[] {
   const rank = (t: NormTx) => { const s = (t.sourceFilingStatus ?? "NEW").toUpperCase(); return s === "AMENDED" ? 1 : s === "DELETED" ? 2 : 0; };
-  return [...rows].sort((a, b) => rank(a) - rank(b) || (a.filedDate ?? "").localeCompare(b.filedDate ?? ""));
+  return [...rows].sort((a, b) => rank(a) - rank(b) || (a.filedDate ?? "").localeCompare(b.filedDate ?? "") || (a.occurrence ?? 1) - (b.occurrence ?? 1));
 }
 
 /** Wendet Aktionen auf einen In-Memory-Bestand an (gleiche Logik wie die Datenbankschicht). */

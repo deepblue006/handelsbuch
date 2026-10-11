@@ -122,3 +122,22 @@ describe("Offizielle Quellen – dokumentierte Formate", () => {
     expect(r.marketCap).toBe(1.4e12);
   });
 });
+
+import { parseRss, htmlToText } from "@/lib/social/truthsocial";
+describe("Truth Social – optionaler RSS-Import (synthetisches RSS 2.0)", () => {
+  it("übernimmt Text unverändert (nur HTML entfernt), Zeitstempel in UTC, chronologisch absteigend", async () => {
+    const xml = `<?xml version="1.0"?><rss version="2.0"><channel><item><title>x</title><link>https://truthsocial.com/@realDonaldTrump/1</link><guid>1</guid><pubDate>Fri, 09 Oct 2026 14:00:00 GMT</pubDate><description>&lt;p&gt;Erster &amp;amp; Text&lt;/p&gt;</description></item><item><link>https://truthsocial.com/@realDonaldTrump/2</link><guid>2</guid><pubDate>Sat, 10 Oct 2026 08:30:00 -0400</pubDate><description>Zweiter</description></item><item><link></link><pubDate>kaputt</pubDate></item></channel></rss>`;
+    const r = await parseRss(xml);
+    expect(r.map((p) => p.id)).toEqual(["2", "1"]);
+    expect(r[0]!.createdAt).toBe("2026-10-10T12:30:00.000Z");
+    expect(r[1]!.text).toBe("Erster & Text");
+  });
+  it("DOCTYPE-Entitäten werden entfernt", async () => {
+    const xml = `<?xml version="1.0"?><!DOCTYPE r [<!ENTITY e "BOOM">]><rss><channel><item><link>u</link><guid>g</guid><pubDate>Fri, 09 Oct 2026 14:00:00 GMT</pubDate><description>&e;</description></item></channel></rss>`;
+    const r = await parseRss(xml);
+    expect(r[0]!.text).not.toContain("BOOM");
+  });
+  it("HTML → Text mit Zeilenumbrüchen", () => {
+    expect(htmlToText("a<br>b<p>c</p>")).toBe("a\nbc");
+  });
+});
