@@ -1,0 +1,518 @@
+// Datenmodell Handelsbuch-Dashboard.
+// Grundsatz: Jede extern bezogene Zeile trägt Provider, Abrufzeitpunkt und – wo vorhanden –
+// den tatsächlichen Datenstand. Demo-/Testdaten sind mit isDemo = true gekennzeichnet.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AssetType {
+  STOCK
+  ETF
+  CRYPTO
+  INDEX_PROXY
+  OTHER
+}
+
+enum TxSide {
+  BUY
+  SELL
+  DIVIDEND
+}
+
+enum BarInterval {
+  DAY
+  WEEK
+}
+
+enum FetchStatus {
+  SUCCESS
+  PARTIAL
+  FAILED
+  SKIPPED
+}
+
+enum CashMovementType {
+  DEPOSIT
+  WITHDRAWAL
+  ADJUSTMENT
+}
+
+// ---------- Stammdaten & Portfolio ----------
+
+model Instrument {
+  id            String     @id @default(cuid())
+  symbol        String     @unique // interner Schlüssel, z. B. "AAPL", "BTC"
+  name          String
+  assetType     AssetType
+  exchange      String? // Heimatbörse, z. B. "NASDAQ", "NYSE", "XETRA"
+  currency      String // Handelswährung an der Heimatbörse (ISO 4217)
+  isin          String?
+  sector        String?
+  industry      String?
+  country       String?
+  // Provider-spezifische Kennungen, z. B. {"alphavantage":"AAPL","coingecko":"bitcoin","secCik":"0000320193"}
+  providerIds   Json       @default("{}")
+  // Branchen, für die Standard-Wachstumsheuristiken ungeeignet sind (Bank, Versicherer, REIT, Rohstoff)
+  businessModel String? // "STANDARD" | "BANK" | "INSURANCE" | "REIT" | "COMMODITY" | "OTHER"
+  isDemo        Boolean    @default(false)
+  onWatchlist   Boolean    @default(false)
+  inBreadthUniverse Boolean @default(false)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  transactions  Transaction[]
+  meta          PositionMeta?
+  priceBars     PriceBar[]
+  quotes        Quote[]
+  fundamentals  Fundamental[]
+  earnings      EarningsEvent[]
+  analystActions AnalystAction[]
+  insiderTx     InsiderTransaction[]
+  savingsPlans  SavingsPlan[]
+  tranches      PlannedTranche[]
+  levels        ManualLevel[]
+  thesisEvents  ThesisEvent[]
+  valuations    ValuationModel[]
+}
+
+model PositionMeta {
+  id             String     @id @default(cuid())
+  instrumentId   String     @unique
+  instrument     Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+  thesis         String?
+  horizon        String? // z. B. "5+ Jahre"
+  // Nachkaufmarken: [{price:number, currency:string, label:string}]
+  rebuyMarks     Json       @default("[]")
+  targetWeightPct Float?
+  maxWeightPct   Float?
+  riskNotes      String?
+  notes          String?
+  // Editierbare Startpräferenz, z. B. "HOLD_ONLY" für Krypto (Entscheidung 08.10.2026). Keine Automatik.
+  preference     String?
+  preferenceNote String?
+  updatedAt      DateTime   @updatedAt
+}
+
+model Transaction {
+  id            String     @id @default(cuid())
+  instrumentId  String
+  instrument    Instrument @relation(fields: [instrumentId], references: [id], onDelete: Restrict)
+  side          TxSide
+  tradeDate     DateTime   @db.Date
+  quantity      Float
+  price         Float // je Stück in priceCurrency (bei DIVIDEND: Gesamtbetrag in priceCurrency, quantity = 1)
+  priceCurrency String
+  fees          Float      @default(0)
+  feeCurrency   String?
+  // Wechselkurs: Einheiten Basiswährung je 1 Einheit priceCurrency zum Handelstag (z. B. EUR je USD)
+  fxToBase      Float?
+  fxSource      String? // "manuell", "ECB", "AlphaVantage FX_DAILY" …
+  venue         String?
+  note          String?
+  importBatchId String?
+  seq           Int        @default(0)
+  isDemo        Boolean    @default(false)
+  createdAt     DateTime   @default(now())
+
+  @@index([instrumentId, tradeDate])
+}
+
+model ImportBatch {
+  id        String   @id @default(cuid())
+  kind      String // "CSV_TRANSACTIONS" | "LEGACY_JSON" | "CSV_FLOWS" | ...
+  filename  String?
+  rowsTotal Int
+  accepted  Int
+  rejected  Int
+  createdAt DateTime @default(now())
+}
+
+model CashMovement {
+  id        String           @id @default(cuid())
+  date      DateTime         @db.Date
+  type      CashMovementType
+  amount    Float // positiv; Richtung über type
+  currency  String
+  note      String?
+  isDemo    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+}
+
+model SavingsPlan {
+  id           String     @id @default(cuid())
+  instrumentId String
+  instrument   Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+  amount       Float
+  currency     String
+  interval     String // "MONTHLY" | "QUARTERLY"
+  dayOfMonth   Int        @default(1)
+  active       Boolean    @default(true)
+  startDate    DateTime   @db.Date
+  note         String?
+  isDemo       Boolean    @default(false)
+}
+
+model PlannedTranche {
+  id           String     @id @default(cuid())
+  instrumentId String
+  instrument   Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+  triggerPrice Float?
+  currency     String
+  amount       Float // Betrag in Basiswährung
+  status       String     @default("OFFEN") // OFFEN | AUSGEFÜHRT_MANUELL | VERWORFEN
+  condition    String? // Freitext: Bedingung, z. B. "RSI14 < 30 und These intakt"
+  note         String?
+  isDemo       Boolean    @default(false)
+  createdAt    DateTime   @default(now())
+}
+
+model ManualLevel {
+  id           String     @id @default(cuid())
+  instrumentId String
+  instrument   Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+  price        Float
+  kind         String // "SUPPORT" | "RESISTANCE"
+  note         String?
+  createdAt    DateTime   @default(now())
+}
+
+model ThesisEvent {
+  id           String     @id @default(cuid())
+  instrumentId String
+  instrument   Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+  date         DateTime   @db.Date
+  kind         String // "POSITIV" | "NEGATIV" | "EREIGNIS" | "THESE_VERLETZT"
+  text         String
+  createdAt    DateTime   @default(now())
+}
+
+model ValuationModel {
+  id           String     @id @default(cuid())
+  instrumentId String
+  instrument   Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+  // Annahmen der drei Szenarien als JSON (siehe src/lib/calc/valuation.ts)
+  assumptions  Json
+  note         String?
+  updatedAt    DateTime   @updatedAt
+}
+
+// ---------- Marktdaten ----------
+
+model PriceBar {
+  id           String      @id @default(cuid())
+  instrumentId String
+  instrument   Instrument  @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+  interval     BarInterval
+  date         DateTime    @db.Date // Handelstag bzw. letzter Handelstag der Woche
+  open         Float?
+  high         Float?
+  low          Float?
+  close        Float
+  volume       Float?
+  currency     String
+  adjusted     Boolean     @default(false) // true = split-/dividendenbereinigt
+  provider     String
+  fetchedAt    DateTime
+  isDemo       Boolean     @default(false)
+
+  @@unique([instrumentId, interval, date, provider])
+  @@index([instrumentId, interval, date])
+}
+
+model Quote {
+  id           String     @id @default(cuid())
+  instrumentId String
+  instrument   Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+  last         Float?
+  bid          Float?
+  ask          Float?
+  quoteTime    DateTime? // Zeitpunkt der Kursfeststellung laut Provider
+  delayMinutes Int?
+  venue        String?
+  currency     String
+  provider     String
+  fetchedAt    DateTime
+  isDemo       Boolean    @default(false)
+
+  @@index([instrumentId, fetchedAt])
+}
+
+model MacroSeries {
+  key            String   @id // z. B. "US10Y", "EFFR", "WTI", "BRENT", "EURUSD", "GOLD_USD", "REAL10Y"
+  name           String
+  unit           String
+  provider       String
+  originalSource String? // z. B. "Federal Reserve H.15"
+  sourceUrl      String?
+  frequency      String // "daily" | "weekly" | "monthly" | "quarterly"
+  observations   MacroObservation[]
+}
+
+model MacroObservation {
+  id        String      @id @default(cuid())
+  seriesKey String
+  series    MacroSeries @relation(fields: [seriesKey], references: [key], onDelete: Cascade)
+  date      DateTime    @db.Date
+  value     Float? // null = vom Provider als fehlend gemeldet (z. B. ".")
+  fetchedAt DateTime
+  provider  String
+  isDemo    Boolean     @default(false)
+
+  @@unique([seriesKey, date, provider])
+  @@index([seriesKey, date])
+}
+
+model Fundamental {
+  id           String     @id @default(cuid())
+  instrumentId String
+  instrument   Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+  metric       String // "REVENUE", "NET_INCOME", "FCF", "EPS_DILUTED", "SBC", "SHARES_DILUTED", "FORWARD_PE_FY1", ...
+  periodEnd    DateTime   @db.Date
+  periodType   String // "FY" | "Q" | "TTM" | "FY1_EST" | "FY2_EST" | "POINT"
+  fiscalYear   Int?
+  value        Float
+  unit         String // "USD", "shares", "ratio", "pct"
+  isEstimate   Boolean    @default(false)
+  filedAt      DateTime? // Veröffentlichungszeitpunkt (wichtig gegen Look-ahead-Bias)
+  provider     String
+  sourceRef    String? // z. B. SEC Accession-Nummer
+  fetchedAt    DateTime
+  isDemo       Boolean    @default(false)
+
+  @@unique([instrumentId, metric, periodEnd, periodType, provider])
+}
+
+model EarningsEvent {
+  id              String     @id @default(cuid())
+  instrumentId    String
+  instrument      Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+  reportDate      DateTime   @db.Date
+  fiscalPeriodEnd DateTime?  @db.Date
+  timeOfDay       String?
+  epsEstimate     Float?
+  currency        String?
+  dateIsEstimated Boolean    @default(true) // ohne Bestätigung des Unternehmens immer Schätzung
+  provider        String
+  fetchedAt       DateTime
+  isDemo          Boolean    @default(false)
+
+  @@unique([instrumentId, reportDate, provider])
+}
+
+model AnalystAction {
+  id           String     @id @default(cuid())
+  instrumentId String
+  instrument   Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+  date         DateTime   @db.Date
+  firm         String?
+  action       String // "UPGRADE" | "DOWNGRADE" | "INIT" | "REITERATE" | "TARGET_CHANGE"
+  fromRating   String?
+  toRating     String?
+  priceTarget  Float?
+  provider     String
+  fetchedAt    DateTime
+  isDemo       Boolean    @default(false)
+}
+
+model InsiderTransaction {
+  id              String     @id @default(cuid())
+  instrumentId    String
+  instrument      Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+  insiderName     String
+  role            String?
+  transactionDate DateTime?  @db.Date
+  filedAt         DateTime?
+  type            String // "KAUF" | "VERKAUF" | "ZUTEILUNG" | "SONSTIGE"
+  shares          Float?
+  price           Float?
+  provider        String
+  sourceUrl       String?
+  fetchedAt       DateTime
+  dedupeKey       String     @unique
+}
+
+model InstitutionalHolding {
+  id           String   @id @default(cuid())
+  filerName    String
+  filerCik     String?
+  symbol       String
+  reportPeriod DateTime @db.Date // Stichtag des Quartals
+  filedAt      DateTime? // Einreichung (bis zu 45 Tage nach Quartalsende)
+  shares       Float?
+  valueUsd     Float?
+  changeShares Float?
+  provider     String
+  sourceUrl    String?
+  fetchedAt    DateTime
+
+  @@unique([filerName, symbol, reportPeriod, provider])
+}
+
+// ---------- ETF-/ETP-Flows ----------
+
+model FundFlow {
+  id         String   @id @default(cuid())
+  fundTicker String
+  issuer     String?
+  assetClass String // "BTC" | "ETH" | "SOL" | "EQUITY" | "BOND" | "GOLD" | ...
+  date       DateTime @db.Date
+  netFlow    Float? // echte Nettoflüsse; null = nicht geliefert
+  flowUnit   String   @default("USD_MILLION")
+  aum        Float? // separat, NICHT als Flussersatz verwenden
+  volume     Float?
+  closePrice Float?
+  status     String   @default("UNBESTÄTIGT") // BESTÄTIGT | UNBESTÄTIGT | GESCHÄTZT | REVIDIERT
+  revision   Int      @default(0)
+  provider   String
+  sourceRef  String?
+  fetchedAt  DateTime
+  isDemo     Boolean  @default(false)
+
+  @@unique([fundTicker, date, provider])
+  @@index([assetClass, date])
+}
+
+// ---------- Politiker-Transaktionsradar ----------
+
+model PoliticianFiling {
+  id            String   @id @default(cuid())
+  source        String // "HOUSE_CLERK" | "SENATE_EFD" | "OGE" | "ALPHAVANTAGE_SECONDARY" | "MANUELL"
+  chamber       String // "HOUSE" | "SENATE" | "EXECUTIVE"
+  docId         String
+  filerName     String
+  filingType    String // "PTR" | "ANNUAL" | "AMENDMENT" | "UNKNOWN"
+  stateDistrict String?
+  year          Int?
+  filedDate     DateTime? @db.Date // Einreichungsdatum laut Quelle
+  publishedAt   DateTime? // Veröffentlichung bzw. erstes Auffinden (separat gekennzeichnet)
+  firstSeenAt   DateTime @default(now())
+  sourceUrl     String?
+  rawText       String? // Originaltext, falls zulässig extrahiert
+  contentHash   String?
+  version       Int      @default(1)
+  status        String   @default("OFFIZIELLE_QUELLE_GEFUNDEN")
+  lastError     String?
+  transactions  PoliticianTransaction[]
+
+  @@unique([source, docId, version])
+}
+
+model PoliticianTransaction {
+  id                 String   @id @default(cuid())
+  filingId           String?
+  filing             PoliticianFiling? @relation(fields: [filingId], references: [id], onDelete: SetNull)
+  source             String
+  politicianName     String
+  bioguideId         String?
+  chamber            String
+  party              String?
+  state              String?
+  owner              String // SELF | SPOUSE | JOINT | DEPENDENT_CHILD | UNBEKANNT – wie im Dokument
+  assetName          String
+  ticker             String?
+  tickerSource       String? // "gemeldet" | "abgeleitet" | null
+  instrumentKind     String // AKTIE | OPTION | ANLEIHE | FONDS | KRYPTO | SONSTIGE | UNBEKANNT
+  txType             String // KAUF | VERKAUF | TEILVERKAUF | TAUSCH | SONSTIGE
+  transactionDate    DateTime? @db.Date
+  notificationDate   DateTime? @db.Date
+  filedDate          DateTime? @db.Date
+  publishedDate      DateTime? @db.Date
+  amountMin          Float?
+  amountMax          Float?
+  amountText         String? // Originalangabe der Spanne
+  rawText            String?
+  status             String // siehe src/lib/politics/status.ts
+  sourceFilingStatus String? // z. B. NEW | AMENDED | DELETED laut Quelle
+  extractionConfidence Float?
+  uncertaintyFlags   Json     @default("[]")
+  dedupeKey          String
+  version            Int      @default(1)
+  supersededById     String?
+  isCurrent          Boolean  @default(true)
+  needsReview        Boolean  @default(false)
+  reviewedAt         DateTime?
+  reviewNote         String?
+  fetchedAt          DateTime
+  createdAt          DateTime @default(now())
+
+  @@unique([dedupeKey, version])
+  @@index([ticker])
+  @@index([politicianName])
+}
+
+model SourceCoverage {
+  id              String    @id @default(cuid())
+  provider        String
+  institution     String
+  docType         String
+  periodsChecked  String? // z. B. "2025, 2026"
+  lastSuccessAt   DateTime?
+  docsFound       Int       @default(0)
+  docsProcessed   Int       @default(0)
+  txExtracted     Int       @default(0)
+  docsPending     Int       @default(0)
+  knownGaps       String?
+  lastError       String?
+  lastErrorAt     DateTime?
+  lastCompletedAt DateTime?
+
+  @@unique([provider, institution, docType])
+}
+
+// ---------- Truth Social ----------
+
+model SocialPost {
+  id         String   @id @default(cuid())
+  platform   String // "TRUTH_SOCIAL"
+  account    String
+  postId     String
+  createdAt  DateTime // in UTC gespeichert, Anzeige mit Zeitzone
+  text       String // Originaltext, unverändert
+  url        String
+  isRepost   Boolean  @default(false)
+  hasMedia   Boolean  @default(false)
+  provider   String
+  fetchedAt  DateTime
+
+  @@unique([platform, postId])
+}
+
+// ---------- Betrieb, Status, Einstellungen ----------
+
+model ProviderState {
+  providerId    String    @id
+  enabled       Boolean   @default(true)
+  lastSuccessAt DateTime?
+  lastErrorAt   DateTime?
+  lastError     String?
+  updatedAt     DateTime  @updatedAt
+}
+
+model FetchLog {
+  id                String      @id @default(cuid())
+  providerId        String
+  dataset           String // Kennzahl oder Dokumentgruppe
+  startedAt         DateTime
+  finishedAt        DateTime?
+  status            FetchStatus
+  recordsReceived   Int         @default(0)
+  recordsProcessed  Int         @default(0)
+  httpStatus        Int?
+  errorMessage      String? // bereinigt, ohne Secrets
+  attempts          Int         @default(1)
+  nextAttemptAt     DateTime?
+
+  @@index([providerId, startedAt])
+}
+
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
