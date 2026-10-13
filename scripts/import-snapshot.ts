@@ -9,6 +9,7 @@ import { parseTimeSeries, parseEconomic, parseGoldSilver, parseFxDaily, parseCon
 import { fromAlphaVantage } from "../src/lib/politics/normalize";
 import { ensureInstrument, upsertBars, upsertMacro, ingestPoliticianTx, withFetchLog, upsertEstimates, upsertInsider, upsertInstitutional } from "../src/lib/server/ingest";
 import { SNAPSHOT_PROVIDER } from "../src/lib/server/data";
+import { SECTOR_ETFS, SECTOR_ETF_TAG } from "../src/lib/server/market";
 
 const DIR = path.resolve(__dirname, "../data/snapshots/alphavantage");
 const FETCHED_AT = new Date("2026-10-11T14:22:00Z"); // Abrufzeitraum ca. 14:19–14:24 UTC (siehe MANIFEST.md)
@@ -53,6 +54,14 @@ async function main() {
     });
   }
   const FETCHED_13 = new Date("2026-10-13T14:17:00Z");
+  for (const [sym, label] of SECTOR_ETFS) {
+    const inst = await ensureInstrument({ symbol: sym, name: `SPDR ${label} (Sektor-ETF)`, assetType: "ETF", currency: "USD", exchange: "NYSE Arca", sector: label, providerIds: { alphavantage: sym } });
+    if (inst.industry !== SECTOR_ETF_TAG) await prisma.instrument.update({ where: { id: inst.id }, data: { industry: SECTOR_ETF_TAG } });
+    await withFetchLog(SNAPSHOT_PROVIDER, `weekly:${sym}`, async () => {
+      const s = parseTimeSeries(load(`TIME_SERIES_WEEKLY_${sym}.json`), "WEEK", "USD", "2026-10-13");
+      return { received: s.bars.length, processed: await upsertBars(inst.id, s, SNAPSHOT_PROVIDER, new Date("2026-10-13T14:40:00Z"), { skipPartial: true }), note: s.partialLastBar ? "laufende Woche verworfen" : undefined };
+    });
+  }
   await withFetchLog(SNAPSHOT_PROVIDER, "estimates:AAPL", async () => { const e = parseEarningsEstimates(load("EARNINGS_ESTIMATES_AAPL_EXCERPT.json")); return { received: e.length, processed: await upsertEstimates(aapl.id, e, SNAPSHOT_PROVIDER, FETCHED_13), note: "Auszug" }; });
   await withFetchLog(SNAPSHOT_PROVIDER, "insider:AAPL", async () => { const t = parseInsiderTransactions(load("INSIDER_TRANSACTIONS_AAPL_EXCERPT.json")); return { received: t.length, processed: await upsertInsider(aapl.id, t, SNAPSHOT_PROVIDER, FETCHED_13), note: "Auszug" }; });
   await withFetchLog(SNAPSHOT_PROVIDER, "institutional:AAPL", async () => { const r = parseInstitutionalHoldings(load("INSTITUTIONAL_HOLDINGS_AAPL_EXCERPT.json")); return { received: r.holdings.length, processed: await upsertInstitutional("AAPL", r, SNAPSHOT_PROVIDER, FETCHED_13), note: "Auszug" }; });

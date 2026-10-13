@@ -141,3 +141,20 @@ test("Kurs-CSV-Import macht SMA 200 und Tages-RSI berechenbar (synthetische Test
   await expect(page.getByText("Kurs & gleitende Durchschnitte (Tage)")).toBeVisible();
   await expect(page.getByText(/Tageskurse: 260 \(csv:test-aapl\.csv/)).toBeVisible();
 });
+
+test("Marktlage: Sektorrotation sichtbar; externe Marktbreite löst Regel A aus", async ({ page }) => {
+  await page.goto("/markt");
+  await expect(page.getByText("Sektorrotation & relative Stärke")).toBeVisible();
+  await expect(page.locator("tr", { hasText: "XLK" })).toBeVisible();
+  await expect(page.getByText(/Saisonalität S&P 500/)).toBeVisible();
+  await expect(page.getByText(/nicht auswertbar – Indexverlauf oder Marktbreite fehlt/)).toBeVisible();
+  await page.getByText("Externe Marktbreite manuell erfassen").click();
+  await page.locator('input[name="date"]').fill("2026-10-09");
+  await page.locator('input[name="pctAbove"]').fill("40");
+  await page.locator('input[name="source"]').fill("E2E-Test, synthetischer Wert");
+  await page.getByRole("button", { name: "Speichern" }).click();
+  await expect(page.getByText(/Externe Marktbreite 40 %/)).toBeVisible();
+  await page.reload();
+  await expect(page.getByText(/Warnsignal: Index nahe Hoch/)).toBeVisible();
+  await expect(page.getByText(/Marktbreite: extern: manuell: E2E-Test/)).toBeVisible();
+});

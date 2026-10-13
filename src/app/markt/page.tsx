@@ -4,6 +4,11 @@ import { Card, PageHeader, Badge, DataBadge, Empty, Table, SourceLine, Missing, 
 import { LinesChart } from "@/components/charts";
 import { money, num, pct, dateDe } from "@/lib/format";
 import { FOMC_SOURCE_NOTE } from "@/lib/fomc";
+import { ActionForm } from "@/components/forms";
+import { Field } from "@/components/ui";
+import { saveExternalBreadth } from "@/app/actions";
+
+const MONTHS = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +24,7 @@ export default async function Markt() {
           {m.ruleA.triggered === null ? <Badge tone="warn">nicht auswertbar – Indexverlauf oder Marktbreite fehlt</Badge> : m.ruleA.triggered ? <Badge tone="bad">Warnsignal: Index nahe Hoch, &gt; {m.cfg.breadthWeakBelowPct} % der Titel unter SMA200</Badge> : <Badge tone="good">Keine schwache Marktbreite nahe Hoch</Badge>}
           {m.ruleA.pullback && <Badge tone="info">Rücksetzer ≥ {m.cfg.marketPullbackPct} % – schrittweisen Kapitaleinsatz prüfen</Badge>}
           {!m.ruleA.representative && b.current.evaluated > 0 && <Badge tone="warn">Universum zu klein ({b.current.evaluated} Titel) – nicht repräsentativ</Badge>}
+          {m.ruleA.breadthSource && <Badge tone="neutral">Marktbreite: {m.ruleA.breadthSource}</Badge>}
         </div>
         <p className="mt-2 text-xs text-ink-2">Referenzreaktion: selektiver kaufen; Cashquote von ca. {m.cfg.referenceCashQuotaPct} % als Orientierung prüfen. Löst keine Transaktion aus. Schwellen unter „Einstellungen“ änderbar.</p>
       </Card>
@@ -53,7 +59,43 @@ export default async function Markt() {
           <summary className="cursor-pointer text-accent">Enthaltene Titel ({b.current.members.length})</summary>
           {b.current.members.length ? <Table head={["Titel", "Status", "Schluss", "SMA200", "Datum", "Grund"]}>{b.current.members.map((x) => <tr key={x.symbol}><td>{x.symbol}</td><td>{x.status}</td><td className="num">{num(x.close)}</td><td className="num">{num(x.sma200)}</td><td>{dateDe(x.date)}</td><td className="text-ink-3">{x.reason}</td></tr>)}</Table> : <p className="mt-1 text-ink-3">Kein Universum definiert. Titel im Kauf-Cockpit mit „zum Marktbreiten-Universum“ hinzufügen (für Aussagekraft ≥ 20, idealerweise die Indexmitglieder). Für 200-Tage-Linien werden ≥ 200 Tageskurse je Titel benötigt (Alpha Vantage Free liefert nur 100).</p>}
         </details>
+        <details className="mt-2 text-xs">
+          <summary className="cursor-pointer text-accent">Externe Marktbreite manuell erfassen (z. B. % S&amp;P-500-Titel über SMA200 aus einer Quelle deiner Wahl)</summary>
+          <ActionForm action={saveExternalBreadth} submit="Speichern" className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
+            <Field label="Datenstand"><input type="date" name="date" defaultValue={m.today} /></Field>
+            <Field label="Anteil über SMA200 (%)"><input name="pctAbove" inputMode="decimal" /></Field>
+            <div className="col-span-2"><Field label="Quelle (Pflicht)"><input name="source" placeholder="z. B. Indikator XY, Anbieter, Datum der Ablesung" /></Field></div>
+          </ActionForm>
+          <p className="mt-1 text-[11px] text-ink-3">Wird für Regel A nur genutzt, wenn das eigene Universum nicht repräsentativ ist und der Wert höchstens 7 Tage alt ist. Aktuell: {b.external ? `${b.external.points.at(-1)?.value ?? "–"} % (${dateDe(b.external.points.at(-1)?.date)}, ${b.external.provider})` : "keiner"}.</p>
+        </details>
       </Card>
+
+      {m.sectors && (
+        <div className="mt-4 grid gap-4 xl:grid-cols-3">
+          <Card title="Sektorrotation & relative Stärke (SPDR-Sektor-ETFs vs. SPY)" className="xl:col-span-2">
+            <Table head={["Sektor", "4 W", "13 W", "26 W", "52 W", "relativ 13 W", "relativ 26 W", "Trend rel. Stärke"]}>
+              {m.sectors.rows.slice().sort((a, b) => (b.relative[13] ?? -999) - (a.relative[13] ?? -999)).map((r) => (
+                <tr key={r.symbol}>
+                  <td>{r.label} <span className="text-ink-3">({r.symbol})</span></td>
+                  {[4, 13, 26, 52].map((w) => <td key={w} className="num">{r.splitInWindow[w] ? <Badge tone="warn">Split?</Badge> : pct(r.returns[w])}</td>)}
+                  {[13, 26].map((w) => <td key={w} className={"num " + ((r.relative[w] ?? 0) >= 0 ? "text-good" : "text-bad")}>{r.relative[w] != null ? `${r.relative[w]! > 0 ? "+" : ""}${num(r.relative[w], 1)} Pp.` : "–"}</td>)}
+                  <td className="text-xs">{r.rsTrend === "VERBESSERT" ? "▲ verbessert" : r.rsTrend === "VERSCHLECHTERT" ? "▼ verschlechtert" : r.rsTrend === "UNVERÄNDERT" ? "→ unverändert" : "–"}</td>
+                </tr>
+              ))}
+            </Table>
+            <p className="mt-2 text-[11px] text-ink-3">{m.sectors.method} Echte Kapitalzu-/abflüsse in Sektor-ETFs sind nicht angebunden – Kursstärke ist kein Flussmaß.</p>
+            <SourceLine provider={m.sectors.provider} dataDate={m.sectors.endDate} fetchedAt={m.sectors.fetchedAt} />
+          </Card>
+          <Card title="Saisonalität S&amp;P 500 (SPY) – nur Kontext">
+            {m.sectors.seasonality.sufficient ? (
+              <Table head={["Monat", "Ø", "Median", "positiv", "n"]}>
+                {m.sectors.seasonality.stats.map((s) => <tr key={s.month} className={s.month === Number(m.today.slice(5, 7)) ? "font-semibold" : ""}><td>{MONTHS[s.month - 1]}</td><td className="num">{pct(s.avgPct, 1)}</td><td className="num">{pct(s.medianPct, 1)}</td><td className="num">{pct(s.positivePct, 0, false)}</td><td className="num">{s.n}</td></tr>)}
+              </Table>
+            ) : <Empty>Zu wenige Jahre für eine Saisonalitätsstatistik.</Empty>}
+            <p className="mt-2 text-[11px] text-ink-3">Monatsrenditen aus dem letzten Wochenschluss je Monat ({m.sectors.seasonality.from}–{m.sectors.seasonality.to}), ohne Dividenden. Saisonalität löst für sich allein keinen Kauf aus und ist keine Prognose.</p>
+          </Card>
+        </div>
+      )}
 
       <div className="mt-4 grid gap-4 xl:grid-cols-3">
         {m.cards.map((c) => (
@@ -88,9 +130,9 @@ export default async function Markt() {
           <ul className="list-inside list-disc text-xs text-ink-2">
             <li>Stressszenario aus der Referenz: Rückgang bestimmter KI-Aktien um 30–40 % – als Szenario im Kaufplan simulierbar, keine Vorhersage.</li>
             <li>Hyperscaler-Capex, Halbleiterabhängigkeit, Strombedarf: offizielle Unternehmensdaten (10-K/10-Q via SEC) je Titel in der Detailseite.</li>
-            <li>Indexkonzentration: Sektor-ETF-Daten (State Street SPDR) und Finviz-Gruppen sind nicht per API angebunden – Verlinkung: <a className="text-accent" href="https://finviz.com/groups.ashx" rel="noreferrer" target="_blank">Finviz Gruppen</a>, <a className="text-accent" href="https://www.ssga.com/us/en/intermediary/etfs" rel="noreferrer" target="_blank">SPDR Sektor-ETFs</a>.</li>
+            <li>Sektorstärke: Kurse der SPDR-Sektor-ETFs (über Alpha Vantage, Wochenbasis) – siehe Sektorrotation. Fondsdaten von State Street (Beteiligungen, Flüsse) und Finviz-Gruppen sind nicht per API angebunden: <a className="text-accent" href="https://finviz.com/groups.ashx" rel="noreferrer" target="_blank">Finviz Gruppen</a>, <a className="text-accent" href="https://www.ssga.com/us/en/intermediary/etfs" rel="noreferrer" target="_blank">SPDR Sektor-ETFs</a>.</li>
           </ul>
-          <p className="mt-2 text-xs text-ink-2">Sektor-ETFs (XLK, XLF, …) können als Watchlist-Werte mit Kursen angelegt werden; deren relative Stärke erscheint dann im Cockpit.</p>
+
         </Card>
       </div>
       <Card title="Saisonalität & Konsumentenstimmung" className="mt-4">

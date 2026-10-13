@@ -32,3 +32,4 @@ Weitergabe der Rohdaten unterliegt den Nutzungsbedingungen von Alpha Vantage.
 | EARNINGS_ESTIMATES_AAPL_EXCERPT.json | EARNINGS_ESTIMATES | **Auszug** (4 von 38 Einträgen, Werte unverändert); historische Quartalsschätzungen sind nicht split-bereinigt (z. B. 2019: 4,55 USD) |
 | INSIDER_TRANSACTIONS_AAPL_EXCERPT.json | INSIDER_TRANSACTIONS | **Auszug** (6 von 91 Einträgen ab 01.04.2026); Feld `acquisition_or_disposal` enthält Form-4-Transaktionscodes; **kein Meldedatum** |
 | INSTITUTIONAL_HOLDINGS_AAPL_EXCERPT.json | INSTITUTIONAL_HOLDINGS | **Auszug** (Kopfdaten + 2 von 6.423 Haltern); Stichtage je Halter unterschiedlich |
+| TIME_SERIES_WEEKLY_XL*.json (11 SPDR-Sektor-ETFs: XLK, XLF, XLV, XLE, XLI, XLY, XLP, XLU, XLB, XLRE, XLC) | TIME_SERIES_WEEKLY | Abruf 13.10.2026 ca. 14:39–14:40 UTC; letzte Kerze (12.10.2026) ist die laufende Woche und wird beim Import verworfen; Rohkurse |

@@ -13,7 +13,7 @@ import { buildComponents } from "../score/components";
 import { aggregateScore } from "../score/score";
 import { getBars, type SeriesResult } from "./data";
 import { loadPortfolio } from "./portfolio";
-import { indexViews, breadthView } from "./market";
+import { indexViews, breadthView, effectiveBreadth } from "./market";
 import { getRuleConfig, getScoreWeights, getGeneral, todayIso } from "../settings";
 import { assessFreshness } from "../data/quality";
 import { z } from "zod";
@@ -139,7 +139,7 @@ export async function analyzeAsset(symbol: string) {
   const politicians = await prisma.politicianTransaction.findMany({ where: { ticker: inst.symbol, isCurrent: true }, orderBy: { transactionDate: "desc" }, take: 10 });
 
   // Marktumfeld
-  const [indices, breadth] = await Promise.all([indexViews(), breadthView(today)]);
+  const [indices, breadth, effBreadth] = await Promise.all([indexViews(), breadthView(today), effectiveBreadth(today)]);
   const spy = indices.find((i) => i.symbol === "SPY");
   const spyWeekly = spy?.weekly ?? [];
   let rel26: number | null = null;
@@ -161,7 +161,7 @@ export async function analyzeAsset(symbol: string) {
     nextEarnings: earnings[0] ? { date: earnings[0].reportDate.toISOString().slice(0, 10), estimated: earnings[0].dateIsEstimated } : null,
     earningsDataAvailable: earningsAny,
     recentDowngrades: actions.length ? recentActs.filter((a) => a.action === "DOWNGRADE").length : null,
-    market: { indexLabel: "S&P 500 (SPY)", indexDrawdownPct: spy?.drawdownPct ?? null, pctBelow200: breadth.current.pctBelow, breadthEvaluated: breadth.current.evaluated },
+    market: { indexLabel: "S&P 500 (SPY)", indexDrawdownPct: spy?.drawdownPct ?? null, pctBelow200: effBreadth.pctBelow, breadthEvaluated: effBreadth.evaluated },
     cashQuotaPct: portfolio.result.cashQuotaPct, thesisIntact,
   }, cfg);
 
@@ -170,7 +170,7 @@ export async function analyzeAsset(symbol: string) {
     fairValueBase, pegValue: pegR.value, fcfYieldPct: fcfYieldPct(fcf, marketCap), revenueGrowthPct: revGrowth, prevRevenueGrowthPct: prevRevGrowth,
     netIncomePositive: ni[0] ? ni[0].value > 0 : null, sbcToRevenuePct: sbc[0] && rev[0] ? (sbc[0].value / rev[0].value) * 100 : null,
     fundamentalsAsOf: rev[0]?.filedAt?.toISOString().slice(0, 10) ?? null,
-    breadthPctAbove: breadth.current.pctAbove, breadthEvaluated: breadth.current.evaluated, indexAbove30w: spy?.last != null && spy.ma30w != null ? spy.last > spy.ma30w : null, relStrength26wPct: inst.symbol === "SPY" ? null : rel26,
+    breadthPctAbove: effBreadth.pctBelow != null ? 100 - effBreadth.pctBelow : null, breadthEvaluated: effBreadth.representative ? Math.max(20, effBreadth.evaluated) : effBreadth.evaluated, indexAbove30w: spy?.last != null && spy.ma30w != null ? spy.last > spy.ma30w : null, relStrength26wPct: inst.symbol === "SPY" ? null : rel26,
     assetClassFlow20d: flows20 && flows20._count > 0 ? flows20._sum.netFlow : null,
     institutionalNetShares: instSummary?.netSharesChange ?? null, institutionalMixedPeriods: instSummary?.mixedPeriods ?? false,
     estimateRevisionsUp30d: fwd.fy1?.revisionsUp30d ?? null, estimateRevisionsDown30d: fwd.fy1?.revisionsDown30d ?? null, estimateRevision30dPct: fwd.revision30dPct, recentDowngrades: actions.length ? recentActs.filter((a) => a.action === "DOWNGRADE").length : null, recentUpgrades: actions.length ? recentActs.filter((a) => a.action === "UPGRADE").length : null,

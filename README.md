@@ -22,7 +22,8 @@ und sind konfigurierbare Startparameter.
 | Regelwerk A–D mit Konflikten, Kaufsignalscore mit Vollständigkeit und 7 Zuständen | implementiert und getestet |
 | Marktlage: Index-ETF-Proxys, Stage, Abstand zum Hoch, Zinsen, Fed Funds, Öl, Gold, EUR/USD | implementiert; mit **echtem Alpha-Vantage-Snapshot** (11.10.2026) geprüft – laufender Abruf: Zugang fehlt |
 | Realzins, Konsumklima, Staatsverschuldung, Buffett-Näherung (FRED) | implementiert, Zugang fehlt (nicht verifiziert) |
-| Marktbreite (% über SMA200) | implementiert und getestet; Datenbasis fehlt, bis für ≥ 20 Universumstitel Tageskurse vorliegen (Premium-Abruf oder Kurs-CSV-Import) |
+| Marktbreite (% über SMA200) | implementiert und getestet; eigenes Universum braucht Tageskurse für ≥ 20 Titel (Premium-Abruf oder Kurs-CSV-Import); alternativ manuell erfasste externe Breite mit Quellenpflicht (≤ 7 Tage alt) |
+| Sektorrotation (11 SPDR-Sektor-ETFs, relative Stärke 4/13/26/52 W, Split-Prüfung je Fenster) und Saisonalität (Monatsstatistik SPY) | implementiert und mit echten Wochenkursen (Snapshot 13.10.2026) getestet; Sektor-**Flüsse** nicht angebunden |
 | Fundamentaldaten (SEC XBRL, Point-in-Time) | implementiert, Zugang fehlt (nicht verifiziert) |
 | Quartalstermine (Alpha Vantage) | Format verifiziert, Zugang fehlt; FOMC-Termine statisch (gegenprüfen) |
 | Konsensschätzungen → Forward-KGV, PEG, Schätzungsrevisionen (Alpha Vantage) | implementiert und mit echtem Auszug getestet; laufender Abruf: Zugang fehlt |

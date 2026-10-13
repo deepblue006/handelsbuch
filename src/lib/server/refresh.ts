@@ -63,10 +63,10 @@ export async function refreshAlphaVantage(): Promise<JobResult[]> {
     ["US10Y", () => client.treasury10y()], ["EFFR", () => client.fedFunds()], ["EURUSD", () => client.eurusd()],
     ["WTI", () => client.wti()], ["BRENT", () => client.brent()], ["GOLD_USD", () => client.gold()],
   ];
-  const instruments = await prisma.instrument.findMany({ where: { isDemo: false, OR: [{ onWatchlist: true }, { transactions: { some: {} } }, { assetType: "INDEX_PROXY" }, { inBreadthUniverse: true }] } });
+  const instruments = await prisma.instrument.findMany({ where: { isDemo: false, OR: [{ onWatchlist: true }, { transactions: { some: {} } }, { assetType: "INDEX_PROXY" }, { inBreadthUniverse: true }, { industry: "SPDR-Sektor-ETF" }] } });
   for (const inst of instruments.filter((i) => i.assetType !== "CRYPTO")) {
     const sym = (inst.providerIds as Record<string, string>).alphavantage ?? inst.symbol;
-    await run(`daily:${inst.symbol}`, async () => { const s = await client.dailyCompact(sym, inst.currency, today); return { received: s.bars.length, processed: await upsertBars(inst.id, s, "alphavantage", fetchedAt()) }; });
+    if (inst.industry !== "SPDR-Sektor-ETF") await run(`daily:${inst.symbol}`, async () => { const s = await client.dailyCompact(sym, inst.currency, today); return { received: s.bars.length, processed: await upsertBars(inst.id, s, "alphavantage", fetchedAt()) }; });
     await run(`weekly:${inst.symbol}`, async () => { const s = await client.weekly(sym, inst.currency, today); return { received: s.bars.length, processed: await upsertBars(inst.id, s, "alphavantage", fetchedAt(), { skipPartial: true }) }; });
   }
   for (const [k, fn] of macroJobs) {

@@ -388,3 +388,17 @@ async function withFetchLogSafe(provider: string, symbol: string, fn: () => Prom
   await prisma.fetchLog.create({ data: { providerId: "manual", dataset: `${provider}:${symbol}`, startedAt, finishedAt: new Date(), status: "SUCCESS", recordsReceived: n, recordsProcessed: n } });
   return n;
 }
+
+export async function saveExternalBreadth(_: ActionState, f: FormData): Promise<ActionState> {
+  try {
+    const date = parseDateFlexible(str(f, "date"));
+    const v = numOrNull(f, "pctAbove");
+    const source = z.string().min(3).max(120).parse(str(f, "source"));
+    if (!date || v == null || v < 0 || v > 100) throw new Error("Datum und Anteil 0–100 % erforderlich");
+    const provider = `manuell: ${source}`;
+    await prisma.macroSeries.upsert({ where: { key: "BREADTH_EXTERNAL" }, create: { key: "BREADTH_EXTERNAL", name: "Anteil Aktien über SMA200 (extern, manuell)", unit: "%", provider, frequency: "daily" }, update: { provider } });
+    await prisma.macroObservation.upsert({ where: { seriesKey_date_provider: { seriesKey: "BREADTH_EXTERNAL", date: new Date(date + "T00:00:00Z"), provider } }, create: { seriesKey: "BREADTH_EXTERNAL", date: new Date(date + "T00:00:00Z"), value: v, provider, fetchedAt: new Date() }, update: { value: v, fetchedAt: new Date() } });
+    revalidatePath("/", "layout");
+    return { ok: true, message: `Externe Marktbreite ${v} % (${date}, ${source}) gespeichert – genutzt, solange ≤ 7 Tage alt und das eigene Universum nicht repräsentativ ist.` };
+  } catch (e) { return fail(e); }
+}

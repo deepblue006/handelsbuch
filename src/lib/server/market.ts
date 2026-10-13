@@ -7,7 +7,14 @@ import { sma, weinsteinStage, distancePct, detectPossibleSplits } from "../calc/
 import { breadthAt, drawdownFromHigh, breadthSeries } from "../calc/breadth";
 import { getBars, macro, lastValid, valueAtOrBefore, type MacroResult } from "./data";
 import { upcomingFomc } from "../fomc";
+import { sectorRotation, seasonality } from "../calc/sectors";
 import { getRuleConfig, getGeneral, todayIso } from "../settings";
+
+export const SECTOR_ETF_TAG = "SPDR-Sektor-ETF";
+export const SECTOR_ETFS: [string, string][] = [
+  ["XLK", "Technologie"], ["XLF", "Finanzen"], ["XLV", "Gesundheit"], ["XLE", "Energie"], ["XLI", "Industrie"], ["XLY", "Zyklischer Konsum"],
+  ["XLP", "Basiskonsum"], ["XLU", "Versorger"], ["XLB", "Grundstoffe"], ["XLRE", "Immobilien"], ["XLC", "Kommunikation"],
+];
 
 export const INDEX_PROXIES = [
   { symbol: "SPY", label: "S&P 500", proxyNote: "SPDR S&P 500 ETF (SPY) als Proxy – kein Indexstand" },
@@ -127,24 +134,52 @@ export async function buffettView() {
   return { points: pts, last: pts.at(-1) ?? null, method: "Marktwert Aktien nichtfinanzieller Unternehmen (Fed Z.1, NCBEILQ027S, Mio. USD) ÷ nominales BIP (Mrd. USD) × 100 – Näherung, Kontextindikator" };
 }
 
+/** Marktbreite für Regeln: eigenes Universum, sonst frische externe Angabe (≤ 7 Tage, mit Quelle). */
+export const effectiveBreadth = cache(async (today: string) => {
+  const b = await breadthView(today);
+  const ext = b.external ? lastValid(b.external.points) : null;
+  const extFresh = ext && (Date.parse(today) - Date.parse(ext.date)) / 86400000 <= 7 ? ext : null;
+  if (!b.representative && extFresh) return { pctBelow: 100 - extFresh.value, evaluated: 0, representative: true, source: `extern: ${b.external!.provider} (${extFresh.date})` };
+  return { pctBelow: b.current.pctBelow, evaluated: b.current.evaluated, representative: b.representative, source: b.current.evaluated ? `eigenes Universum (${b.current.evaluated} Titel)` : null };
+});
+
+export async function sectorView(today: string) {
+  const etfs = await prisma.instrument.findMany({ where: { industry: SECTOR_ETF_TAG }, orderBy: { symbol: "asc" } });
+  const spy = await prisma.instrument.findUnique({ where: { symbol: "SPY" } });
+  if (!spy || !etfs.length) return null;
+  const bm = await getBars(spy.id, "WEEK");
+  const inputs = [];
+  let provider: string | null = null, fetchedAt: Date | null = null;
+  for (const e of etfs) {
+    const w = await getBars(e.id, "WEEK");
+    provider = provider ?? w.provider;
+    if (w.fetchedAt && (!fetchedAt || w.fetchedAt > fetchedAt)) fetchedAt = w.fetchedAt;
+    inputs.push({ symbol: e.symbol, label: e.sector ?? e.symbol, bars: w.bars });
+  }
+  const rot = sectorRotation(inputs, bm.bars);
+  return { ...rot, provider, fetchedAt, isSnapshot: bm.isSnapshot, seasonality: seasonality(bm.bars, today) };
+}
+
 export async function marketOverview() {
   const general = await getGeneral();
   const today = todayIso(general.timezone);
   const cfg = await getRuleConfig();
-  const [indices, breadth, cards, buffett, kalshi] = await Promise.all([
-    indexViews(), breadthView(today), macroCards(), buffettView(), prisma.setting.findUnique({ where: { key: "kalshiSnapshot" } }),
+  const [indices, breadth, cards, buffett, kalshi, sectors] = await Promise.all([
+    indexViews(), breadthView(today), macroCards(), buffettView(), prisma.setting.findUnique({ where: { key: "kalshiSnapshot" } }), sectorView(today),
   ]);
   const spx = indices.find((i) => i.symbol === "SPY");
-  const pctBelow = breadth.current.pctBelow;
+  const eff = await effectiveBreadth(today);
+  const pctBelow = eff.pctBelow;
   const nearHigh = spx?.drawdownPct != null ? spx.drawdownPct >= -cfg.indexNearHighPct : null;
   const ruleA = {
     triggered: nearHigh != null && pctBelow != null ? nearHigh && pctBelow > cfg.breadthWeakBelowPct : null,
     nearHigh,
     pctBelow,
-    representative: breadth.representative,
+    representative: eff.representative,
+    breadthSource: eff.source,
     pullback: spx?.drawdownPct != null ? spx.drawdownPct <= -cfg.marketPullbackPct : null,
   };
-  return { today, indices, breadth, cards, buffett, ruleA, cfg, fomc: upcomingFomc(today, 4), kalshi: kalshi?.value as { fetchedAt: string; markets: { ticker: string; title: string; subtitle: string | null; impliedPct: number | null; basis: string; closeTime: string | null }[] } | null };
+  return { today, indices, breadth, cards, buffett, ruleA, cfg, sectors, fomc: upcomingFomc(today, 4), kalshi: kalshi?.value as { fetchedAt: string; markets: { ticker: string; title: string; subtitle: string | null; impliedPct: number | null; basis: string; closeTime: string | null }[] } | null };
 }
 
 export { distancePct };
