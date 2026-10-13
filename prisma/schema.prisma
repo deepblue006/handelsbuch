@@ -493,7 +493,8 @@ model SocialPost {
   postId     String
   createdAt  DateTime // in UTC gespeichert, Anzeige mit Zeitzone
   text       String // Originaltext, unverändert
-  url        String
+  url        String // Original auf truthsocial.com, sonst Link der Quelle
+  sourceUrl  String? // Eintrag in der Drittquelle (z. B. Archiv), falls abweichend
   isRepost   Boolean  @default(false)
   hasMedia   Boolean  @default(false)
   provider   String

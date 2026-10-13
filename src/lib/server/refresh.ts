@@ -12,7 +12,7 @@ import { RateLimiter, ProviderError, fetchWithRetry } from "../providers/http";
 import { FRED_SERIES, fredSeries, ecbEurUsd, secTickerMap, secCompanyFacts, kalshiFedMarkets } from "../providers/official";
 import { fromAlphaVantage, parseHouseIndexXml, parsePtrText } from "../politics/normalize";
 import { extractPdfText } from "../politics/pdf";
-import { parseRss } from "../social/truthsocial";
+import { parseRss, resolveFeedSource, MAX_FEED_BYTES } from "../social/truthsocial";
 import { withFetchLog, type FetchOutcome, countCallsToday, countSuccessThisMonth, upsertBars, upsertMacro, upsertEarnings, ingestPoliticianTx, upsertEstimates, upsertInsider, upsertInstitutional, upsertSplits } from "./ingest";
 import { todayIso } from "../settings";
 
@@ -321,18 +321,33 @@ export async function processHousePdfs(year: number): Promise<JobResult[]> {
   return out;
 }
 
+export async function truthFeedSource() {
+  const st = await prisma.setting.findUnique({ where: { key: "truthFeedPreset" } });
+  return resolveFeedSource(process.env.TRUTHSOCIAL_FEED_URL, !!(st?.value as { active?: boolean } | null)?.active);
+}
+
 export async function refreshTruthSocial(): Promise<JobResult[]> {
   if (!(await isEnabled("truthsocial"))) return [];
-  const url = process.env.TRUTHSOCIAL_FEED_URL;
+  const src = await truthFeedSource();
   const r = await withFetchLog("truthsocial", "feed", async () => {
-    if (!url) throw new ProviderError("Keine zulässige Feed-Quelle konfiguriert (TRUTHSOCIAL_FEED_URL)", "ZUGANG_FEHLT");
-    const res = await fetchWithRetry(url, { retries: 1 });
-    const posts = await parseRss(await res.text());
+    if (!src) throw new ProviderError("Keine Feed-Quelle aktiv (Archiv-Voreinstellung aktivieren oder TRUTHSOCIAL_FEED_URL setzen)", "ZUGANG_FEHLT");
+    const res = await fetchWithRetry(src.url, { retries: 1, headers: { Accept: "application/rss+xml, application/xml;q=0.9" } });
+    const xml = await res.text();
+    if (xml.length > MAX_FEED_BYTES) throw new ProviderError(`Feed zu groß (${xml.length} Bytes)`, "FORMAT");
+    const posts = await parseRss(xml);
     const now = new Date();
+    let created = 0;
     for (const p of posts) {
-      await prisma.socialPost.upsert({ where: { platform_postId: { platform: "TRUTH_SOCIAL", postId: p.id } }, create: { platform: "TRUTH_SOCIAL", account: "realDonaldTrump", postId: p.id, createdAt: new Date(p.createdAt), text: p.text, url: p.url, provider: "rss", fetchedAt: now, hasMedia: p.hasMedia }, update: { fetchedAt: now } });
+      const existing = await prisma.socialPost.findUnique({ where: { platform_postId: { platform: "TRUTH_SOCIAL", postId: p.id } }, select: { id: true } });
+      // Text wird nur beim ersten Abruf gespeichert (spätere Ergänzungen der Quelle ändern ihn nicht)
+      await prisma.socialPost.upsert({
+        where: { platform_postId: { platform: "TRUTH_SOCIAL", postId: p.id } },
+        create: { platform: "TRUTH_SOCIAL", account: "realDonaldTrump", postId: p.id, createdAt: new Date(p.createdAt), text: p.text, url: p.url, sourceUrl: p.sourceUrl, provider: src.label, fetchedAt: now, hasMedia: p.hasMedia, isRepost: p.isRepost },
+        update: { fetchedAt: now },
+      });
+      if (!existing) created++;
     }
-    return { received: posts.length, processed: posts.length };
+    return { received: posts.length, processed: posts.length, note: `${created} neu · Quelle: ${src.label}` };
   });
   return [{ provider: "truthsocial", dataset: "feed", ok: r.ok, info: r.ok ? `${r.processed} Posts` : r.error }];
 }

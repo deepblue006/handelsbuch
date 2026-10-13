@@ -35,7 +35,7 @@ und sind konfigurierbare Startparameter.
 | Senate eFD, OGE | kein automatischer Abruf; manuelle Meldung mit offiziellem Link + PDF-Upload implementiert |
 | Krypto über CoinGecko Demo-API (Kurs mit Anbieter-Zeitstempel, Marktkapitalisierung, Volumen, Umlauf, Allzeithoch, 365 Tageskurse, Gesamtmarkt/BTC-Dominanz; Monatskontingent, Quellennennung) / Alpha Vantage als Ersatz | implementiert und mit synthetischen Antworten getestet (Unit, DB-Integration, E2E-Leerzustände); **live ungeprüft** – `api.coingecko.com` in der Sandbox gesperrt; Auth/Grenzen über Doku-Auszüge bestätigt, `/coins/markets`-Feldnamen nicht. Alpha-Vantage-Format verifiziert (BTC/EUR-Snapshot) |
 | On-Chain-Kennzahlen | noch nicht implementiert |
-| Truth Social | kein Live-Feed (keine zulässige Quelle verifiziert); optionaler RSS-Import implementiert, nicht verifiziert |
+| Truth Social | Posts im Dashboard über den öffentlichen RSS-Feed des Archivs „Trump's Truth“ (trumpstruth.org), per Klick aktivierbar, Abruf alle 15 min, Link zum Original; kein Abruf von truthsocial.com (Nutzungsbedingungen). Mit synthetischem Feed getestet; **live ungeprüft** (Host in der Sandbox gesperrt) |
 | Kaufplan, Sparpläne, Tranchen, Rücksetzer-/KI-Stressszenario, Kaufsimulation | implementiert und getestet |
 | Buchung passt Liquidität optional an | implementiert und getestet (E2E) |
 | Backtest (ohne Look-ahead, Mindeststichprobe, Splitprüfung) | implementiert und getestet |

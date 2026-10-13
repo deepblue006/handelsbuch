@@ -150,4 +150,42 @@ d("Datenbank-Integration", () => {
     expect(((await prisma.setting.findUnique({ where: { key: "cg:global" } }))?.value as { dominancePct: { btc: number } }).dominancePct.btc).toBe(56.2);
     expect(await ingest.countSuccessThisMonth("coingecko")).toBe(3);
   });
+
+  it("Truth-Social-Archivquelle (synthetischer Feed): erst nach Aktivierung, ohne Dubletten, Text bleibt beim ersten Stand, Größenlimit", async () => {
+    const refresh = await import("@/lib/server/refresh");
+    const { vi } = await import("vitest");
+    await prisma.socialPost.deleteMany({});
+    await prisma.setting.deleteMany({ where: { key: "truthFeedPreset" } });
+    await prisma.providerState.upsert({ where: { providerId: "truthsocial" }, create: { providerId: "truthsocial", enabled: true }, update: { enabled: true } });
+    delete process.env.TRUTHSOCIAL_FEED_URL;
+    const item = (n: string, text: string) => `<item><link>https://trumpstruth.org/statuses/${n}</link><guid>https://trumpstruth.org/statuses/${n}</guid><pubDate>Sun, 11 Oct 2026 21:0${n.slice(-1)}:00 GMT</pubDate><description>${text} https://truthsocial.com/@realDonaldTrump/11500000000000000${n.slice(-1)}</description></item>`;
+    let body = `<?xml version="1.0"?><rss version="2.0"><channel>${item("41", "Erster Text")}${item("42", "Zweiter Text")}</channel></rss>`;
+    const urls: string[] = [];
+    const spy = vi.spyOn(globalThis, "fetch").mockImplementation((async (u: string | URL) => { urls.push(String(u)); return new Response(body, { status: 200 }); }) as typeof fetch);
+    try {
+      // ohne Aktivierung: kein Abruf
+      expect((await refresh.refreshTruthSocial())[0]!.ok).toBe(false);
+      expect(urls).toEqual([]);
+      await prisma.setting.create({ data: { key: "truthFeedPreset", value: { active: true } } });
+      const first = (await refresh.refreshTruthSocial())[0]!;
+      expect(first).toMatchObject({ ok: true, info: "2 Posts" });
+      expect(urls[0]).toContain("trumpstruth.org/feed");
+      // zweiter Abruf: Quelle ergänzt Text (z. B. Transkript) → gespeicherter Text bleibt unverändert, keine Dublette
+      body = body.replace("Erster Text", "Erster Text [Transkript]");
+      await refresh.refreshTruthSocial();
+      const posts = await prisma.socialPost.findMany({ orderBy: { createdAt: "asc" } });
+      expect(posts).toHaveLength(2);
+      expect(posts[0]!.text).toBe("Erster Text https://truthsocial.com/@realDonaldTrump/115000000000000001");
+      expect(posts[0]!.url).toBe("https://truthsocial.com/@realDonaldTrump/posts/115000000000000001");
+      expect(posts[0]!.sourceUrl).toBe("https://trumpstruth.org/statuses/41");
+      expect(posts[0]!.provider).toBe("Trump's Truth (trumpstruth.org)");
+      // übergroßer Feed wird abgelehnt
+      body = "x".repeat(5_000_001);
+      const big = await refresh.refreshTruthSocial();
+      expect(big[0]!.ok).toBe(false);
+      expect(big[0]!.info).toContain("Feed zu groß");
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });

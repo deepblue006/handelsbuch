@@ -11,7 +11,7 @@ import { previewTransactionsCsv, parseLegacyBackup, parseDecimal, parseDateFlexi
 import { looksLikeSecretMaterial } from "@/lib/security/redact";
 import { saveSetting, getGeneral, todayIso } from "@/lib/settings";
 import { ValuationAssumptionsSchema } from "@/lib/server/analysis";
-import { refreshAll } from "@/lib/server/refresh";
+import { refreshAll, refreshTruthSocial } from "@/lib/server/refresh";
 import { parseWideFlowTable } from "@/lib/flows/flows";
 import { upsertFlows, ingestPoliticianTx } from "@/lib/server/ingest";
 import { parsePtrText } from "@/lib/politics/normalize";
@@ -450,5 +450,32 @@ export async function confirmSplitList(_: ActionState, f: FormData): Promise<Act
     await prisma.instrument.update({ where: { id: instrumentId }, data: { splitsCheckedAt: new Date(), splitsCheckedSource: `manuell: ${source}` } });
     revalidatePath("/", "layout");
     return { ok: true, message: `Splitliste als vollständig bestätigt (${source}). Verbleibende Kurssprünge gelten als echte Kursbewegungen, solange sie nicht nahe einem gemeldeten Split liegen.` };
+  } catch (e) { return fail(e); }
+}
+
+// ---------- Truth Social: Archiv-Voreinstellung ----------
+
+/** Aktiviert/deaktiviert die Archivquelle (Nutzerentscheidung) und schaltet den Provider entsprechend. */
+export async function setTruthPreset(_: ActionState, f: FormData): Promise<ActionState> {
+  try {
+    const active = str(f, "active") === "1";
+    const value = { active, changedAt: new Date().toISOString() };
+    await prisma.setting.upsert({ where: { key: "truthFeedPreset" }, create: { key: "truthFeedPreset", value }, update: { value } });
+    await prisma.providerState.upsert({ where: { providerId: "truthsocial" }, create: { providerId: "truthsocial", enabled: active || !!process.env.TRUTHSOCIAL_FEED_URL }, update: { enabled: active || !!process.env.TRUTHSOCIAL_FEED_URL } });
+    if (!active) { revalidatePath("/truth-social"); return { ok: true, message: "Archivquelle deaktiviert. Bereits gespeicherte Posts bleiben erhalten." }; }
+    const r = await refreshTruthSocial();
+    revalidatePath("/truth-social");
+    const first = r[0];
+    return first?.ok ? { ok: true, message: `Archivquelle aktiviert – ${first.info} abgerufen.` } : { ok: false, message: `Archivquelle aktiviert, Abruf fehlgeschlagen: ${first?.info ?? "unbekannt"}. Erneuter Versuch beim nächsten Lauf (alle 15 Minuten im Scheduler).` };
+  } catch (e) { return fail(e); }
+}
+
+export async function fetchTruthNow(_: ActionState): Promise<ActionState> {
+  try {
+    const r = await refreshTruthSocial();
+    revalidatePath("/truth-social");
+    const first = r[0];
+    if (!first) return { ok: false, message: "Quelle ist deaktiviert." };
+    return { ok: first.ok, message: first.ok ? `${first.info} abgerufen.` : `Abruf fehlgeschlagen: ${first.info}` };
   } catch (e) { return fail(e); }
 }

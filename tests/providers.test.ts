@@ -124,7 +124,7 @@ describe("Offizielle Quellen – dokumentierte Formate", () => {
   });
 });
 
-import { parseRss, htmlToText } from "@/lib/social/truthsocial";
+import { parseRss, htmlToText, findOriginalUrl, resolveFeedSource, ARCHIVE_PRESET } from "@/lib/social/truthsocial";
 describe("Truth Social – optionaler RSS-Import (synthetisches RSS 2.0)", () => {
   it("übernimmt Text unverändert (nur HTML entfernt), Zeitstempel in UTC, chronologisch absteigend", async () => {
     const xml = `<?xml version="1.0"?><rss version="2.0"><channel><item><title>x</title><link>https://truthsocial.com/@realDonaldTrump/1</link><guid>1</guid><pubDate>Fri, 09 Oct 2026 14:00:00 GMT</pubDate><description>&lt;p&gt;Erster &amp;amp; Text&lt;/p&gt;</description></item><item><link>https://truthsocial.com/@realDonaldTrump/2</link><guid>2</guid><pubDate>Sat, 10 Oct 2026 08:30:00 -0400</pubDate><description>Zweiter</description></item><item><link></link><pubDate>kaputt</pubDate></item></channel></rss>`;
@@ -137,6 +137,24 @@ describe("Truth Social – optionaler RSS-Import (synthetisches RSS 2.0)", () =>
     const xml = `<?xml version="1.0"?><!DOCTYPE r [<!ENTITY e "BOOM">]><rss><channel><item><link>u</link><guid>g</guid><pubDate>Fri, 09 Oct 2026 14:00:00 GMT</pubDate><description>&e;</description></item></channel></rss>`;
     const r = await parseRss(xml);
     expect(r[0]!.text).not.toContain("BOOM");
+  });
+  it("Archiv-Eintrag (synthetisch): Original-Link auf truthsocial.com wird erkannt, Archiv-Link separat; gleiche ID über Quellen hinweg", async () => {
+    const orig = "https://truthsocial.com/@realDonaldTrump/115012345678901234";
+    const xml = `<?xml version="1.0"?><rss version="2.0"><channel>
+      <item><title>Post</title><link>https://trumpstruth.org/statuses/42252</link><guid>https://trumpstruth.org/statuses/42252</guid><pubDate>Sun, 11 Oct 2026 21:05:00 GMT</pubDate><description>&lt;p&gt;Text&lt;/p&gt;&lt;p&gt;&lt;a href="${orig}"&gt;Original&lt;/a&gt;&lt;/p&gt;</description></item>
+      <item><link>https://trumpstruth.org/statuses/42251</link><guid>https://trumpstruth.org/statuses/42251</guid><pubDate>Sun, 11 Oct 2026 20:00:00 GMT</pubDate><description>Ohne Original-Link</description></item>
+    </channel></rss>`;
+    const r = await parseRss(xml);
+    expect(r[0]).toMatchObject({ url: "https://truthsocial.com/@realDonaldTrump/posts/115012345678901234", sourceUrl: "https://trumpstruth.org/statuses/42252", id: "https://truthsocial.com/@realDonaldTrump/posts/115012345678901234" });
+    expect(r[1]).toMatchObject({ url: "https://trumpstruth.org/statuses/42251", sourceUrl: null });
+    // gleicher Post direkt mit Original-Link (andere Quelle) → gleiche ID, keine Dublette
+    expect(findOriginalUrl("https://truthsocial.com/@realDonaldTrump/posts/115012345678901234")).toBe(r[0]!.id);
+    expect(findOriginalUrl("https://truthsocial.com/@someoneElse/posts/115012345678901234")).toBeNull();
+  });
+  it("Quellenwahl: eigene URL (nur https) vor Archiv-Voreinstellung; ohne beides keine Quelle", () => {
+    expect(resolveFeedSource("https://example.org/feed.xml", true)).toMatchObject({ kind: "ENV", label: "eigene Quelle (example.org)" });
+    expect(resolveFeedSource("http://unsicher.example/feed", true)).toMatchObject({ kind: "PRESET", url: ARCHIVE_PRESET.feedUrl });
+    expect(resolveFeedSource(undefined, false)).toBeNull();
   });
   it("HTML → Text mit Zeilenumbrüchen", () => {
     expect(htmlToText("a<br>b<p>c</p>")).toBe("a\nbc");

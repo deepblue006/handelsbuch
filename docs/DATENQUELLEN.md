@@ -29,7 +29,7 @@ nicht live getestet · **NICHT_IMPLEMENTIERT** = bewusst kein Adapter · **NUR_L
 | House Clerk Financial Disclosure | PTR-Index (XML im Jahres-ZIP), PTR-PDFs | frei | – | STOCK Act § 8; gesetzliche Nutzungsbeschränkungen (u. a. keine kommerzielle Nutzung) | UNGEPRÜFT; PDF-Text per Einfügen |
 | Senate eFD | PTR (Webformulare) | frei | – | Nutzungsvereinbarung im Browser; automatisierte Nutzung nicht als zulässig verifiziert | NICHT_IMPLEMENTIERT (Link) |
 | OGE | 278e/278-T | teils auf Antrag | – | – | NUR_LINK |
-| Truth Social | öffentliche Posts | **keine öffentliche, offiziell dokumentierte API**; Lizenzzugang nur für ausgewählte Firmen (Medienbericht) | – | Scraping laut Berichten untersagt, Betreiber blockiert Scraper | kein Abruf; optionale vom Nutzer geprüfte RSS-URL |
+| Truth Social | öffentliche Posts | **keine öffentliche, offiziell dokumentierte API**; Lizenzzugang nur für ausgewählte Firmen (Medienbericht) | – | Scraping laut Berichten untersagt, Betreiber blockiert Scraper | kein direkter Abruf. Stattdessen (Nutzerentscheidung, Klick auf der Truth-Social-Seite): RSS des unabhängigen Archivs „Trump's Truth“ (trumpstruth.org/feed, Defending Democracy Together; Parameter limit 1–500, start_date/end_date; prüft laut FAQ alle paar Minuten). Feldstruktur nicht live geprüft; eigene RSS-URL über `TRUTHSOCIAL_FEED_URL` hat Vorrang |
 | TradingView, InvestingPro, Aktienfinder, Eulerpool, aktien.guide, Onvista, finanzen.net, Earnings Whispers, State Street SPDR | Charts, Fundamentaldaten, Termine, Sektor-ETFs | Abos ohne dokumentierte freie API | – | Scraping nicht implementiert | NUR_LINK / manuelle Werte |
 
 ## Belege (Auswahl)
@@ -42,6 +42,8 @@ nicht live getestet · **NICHT_IMPLEMENTIERT** = bewusst kein Adapter · **NUR_L
 - Finviz API: https://finviz.com/blog/our-upgraded-api-higher-limits-clearer-data-and-more-ways-to-connect/
 - Alpha Vantage Premium/Limits: https://www.alphavantage.co/premium
 - Truth Social API-Bericht: https://www.gigazine.net/gsc_news/en/20260717-truth-social-api/
+- Truth Social Nutzungsbedingungen: https://help.truthsocial.com/legal/terms-of-service/
+- Archiv „Trump's Truth“ (RSS, FAQ): https://www.trumpstruth.org/faq
 - FOMC 2026: https://www.chicagofed.org/utilities/about-us/federal-reserve-calendars · 2027: MNI-Meldung
 - House Clerk: https://disclosures-clerk.house.gov/FinancialDisclosure · Senate eFD: https://efdsearch.senate.gov/search/
 
