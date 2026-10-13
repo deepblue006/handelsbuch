@@ -33,6 +33,11 @@ export interface ComponentInputs {
   relStrength26wPct: number | null; // Performance relativ zum Index über 26 Wochen
   // Flows / Sentiment
   assetClassFlow20d: number | null; // Mio. USD
+  institutionalNetShares?: number | null; // 13F-basiert: Aktien bei Aufstockern − bei Reduzierern
+  institutionalMixedPeriods?: boolean;
+  estimateRevisionsUp30d?: number | null;
+  estimateRevisionsDown30d?: number | null;
+  estimateRevision30dPct?: number | null;
   recentDowngrades: number | null;
   recentUpgrades: number | null;
   // Portfolio
@@ -110,7 +115,8 @@ export function buildComponents(x: ComponentInputs, cfg: RuleConfig): ComponentS
   const fl: Factor[] = [];
   const flMissing: string[] = [];
   if (x.assetClassFlow20d != null) fl.push(f(x.assetClassFlow20d >= 0 ? "ETF-Nettozuflüsse (20 Tage)" : "ETF-Nettoabflüsse (20 Tage)", x.assetClassFlow20d >= 0 ? 10 : -10, `${num(x.assetClassFlow20d, 1)} Mio. USD`));
-  else flMissing.push("Institutionelle Flüsse");
+  if (x.institutionalNetShares != null) fl.push(f(x.institutionalNetShares >= 0 ? "13F: mehr Aktien bei aufstockenden Institutionen" : "13F: mehr Aktien bei reduzierenden Institutionen", x.institutionalNetShares >= 0 ? 5 : -5, `${num(x.institutionalNetShares / 1e6, 1)} Mio. Aktien netto${x.institutionalMixedPeriods ? ", gemischte Stichtage, verzögert" : ", verzögert"}`));
+  if (!fl.length) flMissing.push("Institutionelle Flüsse");
 
   // --- Sentiment ---
   const s: Factor[] = [];
@@ -119,6 +125,10 @@ export function buildComponents(x: ComponentInputs, cfg: RuleConfig): ComponentS
     const d = x.recentDowngrades ?? 0, u = x.recentUpgrades ?? 0;
     s.push(f(d > u ? "Mehr Herabstufungen als Heraufstufungen" : u > d ? "Mehr Heraufstufungen (Erwartungen evtl. eingepreist)" : "Analystenstimmung ausgeglichen", d > u ? -10 : 0, `${u} hoch / ${d} runter`));
   } else sMissing.push("Analystenmaßnahmen");
+  if (x.estimateRevisionsUp30d != null || x.estimateRevisionsDown30d != null) {
+    const u = x.estimateRevisionsUp30d ?? 0, d = x.estimateRevisionsDown30d ?? 0;
+    s.push(f(u > d ? "Gewinnschätzungen überwiegend angehoben (30 T.)" : d > u ? "Gewinnschätzungen überwiegend gesenkt (30 T.)" : "Schätzungsrevisionen ausgeglichen", u > d ? 5 : d > u ? -10 : 0, `${u} hoch / ${d} runter${x.estimateRevision30dPct != null ? `, Ø ${pct(x.estimateRevision30dPct, 2)}` : ""}`));
+  }
 
   // --- Portfolio-Fit ---
   const p: Factor[] = [];

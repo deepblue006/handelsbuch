@@ -19,6 +19,7 @@ test("Buchung erfassen: Fremdwährung ohne Wechselkurs wird angenommen, aber als
   await form.getByRole("button", { name: "Buchen" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Kauf MSFT gebucht" })).toBeVisible();
   await page.reload();
+  await expect(page.getByText(/WITHDRAWAL 801,00\s\$/)).toBeVisible(); // Liquidität angepasst
   const row = page.locator("tr", { hasText: "Microsoft" }).first();
   await expect(row).toContainText("Historischer Wechselkurs USD/EUR");
 });
@@ -49,7 +50,9 @@ test("CSV-Import: Vorschau zeigt ungültige Zeilen, Import nur nach Bestätigung
 test("Detailseite: transparente Prüfung mit fehlenden Daten statt Schätzung", async ({ page }) => {
   await page.goto("/asset/AAPL");
   await expect(page.getByRole("heading", { name: /AAPL/ })).toBeVisible();
-  await expect(page.getByText("Datenlage nicht ausreichend").first()).toBeVisible();
+  await expect(page.getByText(/Vollständigkeit \d+ %/)).toBeVisible();
+  await expect(page.getByText(/PEG möglicherweise teuer/).first()).toBeVisible(); // aus Konsensschätzung (Snapshot)
+  await expect(page.getByText(/Unterschiedliche Stichtage/)).toBeVisible(); // 13F-Hinweis
   await expect(page.getByText(/braucht 200 Tageskurse/)).toBeVisible();
   await expect(page.getByText("D1_UEBER_FAIR_VALUE", { exact: true })).toBeVisible();
   await expect(page.getByText(/Möglicher unbereinigter Split|Stage 2/).first()).toBeVisible();

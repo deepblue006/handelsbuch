@@ -5,9 +5,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { prisma } from "../src/lib/db";
-import { parseTimeSeries, parseEconomic, parseGoldSilver, parseFxDaily, parseCongressTrades } from "../src/lib/providers/alphavantage";
+import { parseTimeSeries, parseEconomic, parseGoldSilver, parseFxDaily, parseCongressTrades, parseEarningsEstimates, parseInsiderTransactions, parseInstitutionalHoldings } from "../src/lib/providers/alphavantage";
 import { fromAlphaVantage } from "../src/lib/politics/normalize";
-import { ensureInstrument, upsertBars, upsertMacro, ingestPoliticianTx, withFetchLog } from "../src/lib/server/ingest";
+import { ensureInstrument, upsertBars, upsertMacro, ingestPoliticianTx, withFetchLog, upsertEstimates, upsertInsider, upsertInstitutional } from "../src/lib/server/ingest";
 import { SNAPSHOT_PROVIDER } from "../src/lib/server/data";
 
 const DIR = path.resolve(__dirname, "../data/snapshots/alphavantage");
@@ -42,6 +42,7 @@ async function main() {
     ["US10Y", "TREASURY_YIELD_10Y_DAILY.json", (j) => parseEconomic(j, "US10Y"), { name: "Rendite 10-jähriger US-Staatsanleihen", unit: "%", originalSource: "Federal Reserve H.15 (über Alpha Vantage)" }],
     ["EFFR", "FEDERAL_FUNDS_RATE_DAILY.json", (j) => parseEconomic(j, "EFFR"), { name: "Effective Federal Funds Rate", unit: "%", originalSource: "Federal Reserve H.15 (über Alpha Vantage)" }],
     ["WTI", "WTI_DAILY.json", (j) => parseEconomic(j, "WTI"), { name: "WTI Rohöl", unit: "USD je Barrel", originalSource: "U.S. EIA (über Alpha Vantage)" }],
+    ["BRENT", "BRENT_DAILY.json", (j) => parseEconomic(j, "BRENT"), { name: "Brent Rohöl", unit: "USD je Barrel", originalSource: "U.S. EIA (über Alpha Vantage)" }],
     ["GOLD_USD", "GOLD_DAILY.json", (j) => parseGoldSilver(j, "GOLD_USD"), { name: "Gold (XAU/USD)", unit: "USD je Feinunze", originalSource: "Alpha Vantage" }],
     ["EURUSD", "FX_DAILY_EURUSD_LAST10.json", (j) => parseFxDaily(j, "EURUSD"), { name: "EUR/USD Tagesschluss (nur 10 Tage im Snapshot)", unit: "USD je EUR", originalSource: "Alpha Vantage FX_DAILY" }],
   ];
@@ -51,6 +52,10 @@ async function main() {
       return { received: d.points.length, processed: await upsertMacro({ key, ...meta, provider: SNAPSHOT_PROVIDER, frequency: "daily", sourceUrl: "https://www.alphavantage.co/documentation/" }, d, FETCHED_AT, "2000-01-01") };
     });
   }
+  const FETCHED_13 = new Date("2026-10-13T14:17:00Z");
+  await withFetchLog(SNAPSHOT_PROVIDER, "estimates:AAPL", async () => { const e = parseEarningsEstimates(load("EARNINGS_ESTIMATES_AAPL_EXCERPT.json")); return { received: e.length, processed: await upsertEstimates(aapl.id, e, SNAPSHOT_PROVIDER, FETCHED_13), note: "Auszug" }; });
+  await withFetchLog(SNAPSHOT_PROVIDER, "insider:AAPL", async () => { const t = parseInsiderTransactions(load("INSIDER_TRANSACTIONS_AAPL_EXCERPT.json")); return { received: t.length, processed: await upsertInsider(aapl.id, t, SNAPSHOT_PROVIDER, FETCHED_13), note: "Auszug" }; });
+  await withFetchLog(SNAPSHOT_PROVIDER, "institutional:AAPL", async () => { const r = parseInstitutionalHoldings(load("INSTITUTIONAL_HOLDINGS_AAPL_EXCERPT.json")); return { received: r.holdings.length, processed: await upsertInstitutional("AAPL", r, SNAPSHOT_PROVIDER, FETCHED_13), note: "Auszug" }; });
   const nvda = await ensureInstrument({ symbol: "NVDA", name: "NVIDIA Corporation", assetType: "STOCK", currency: "USD", exchange: "NASDAQ", sector: "Halbleiter", providerIds: { alphavantage: "NVDA" }, onWatchlist: true });
   void nvda;
   await withFetchLog(SNAPSHOT_PROVIDER, "congress:NVDA", async () => {

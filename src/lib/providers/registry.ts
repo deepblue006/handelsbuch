@@ -22,7 +22,7 @@ export const PROVIDERS: ProviderInfo[] = [
     delay: "Echtzeit/15-Min-Verzögerung nur mit gesonderter Berechtigung; Free: Tagesschluss.",
     history: "TIME_SERIES_DAILY Free nur 100 Tage (outputsize=full ist Premium – am 11.10.2026 bestätigt); WEEKLY 20+ Jahre frei.",
     terms: "Nutzungsbedingungen von Alpha Vantage beachten; Weitergabe/Veröffentlichung der Daten nicht ohne Prüfung.",
-    fields: ["OHLCV täglich (100 Tage)", "OHLCV wöchentlich (Rohkurse, nicht split-bereinigt)", "10J-Treasury-Rendite", "Effektiver Leitzins", "WTI/Brent", "Gold", "EUR/USD", "Earnings-Kalender", "Kongress-Transaktionen (aggregiert)", "Krypto täglich"],
+    fields: ["OHLCV täglich (100 Tage)", "OHLCV wöchentlich (Rohkurse, nicht split-bereinigt)", "10J-Treasury-Rendite", "Effektiver Leitzins", "WTI/Brent", "Gold", "EUR/USD", "Earnings-Kalender", "Konsensschätzungen EPS/Umsatz mit Analystenzahl und Revisionen", "Insidertransaktionen (Form-4-Codes, ohne Meldedatum)", "Institutionelle Beteiligungen (13F-basiert, gemischte Stichtage)", "Kongress-Transaktionen (aggregiert)", "Krypto täglich"],
     notProvided: ["SMA200 aus Tageskursen im Free-Tier (nur 100 Tage)", "COMPANY_OVERVIEW für diesen Key als Premium gemeldet", "Geld-/Briefkurse", "Orderbuch"],
     verification: "FORMAT_VERIFIZIERT",
     verificationNote: "Echte Antworten am 11.10.2026 über die Alpha-Vantage-MCP-Schnittstelle abgerufen und als Snapshot gespeichert; der direkte Abruf aus der App war in der Entwicklungsumgebung durch die Netzwerk-Policy gesperrt.",

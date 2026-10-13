@@ -18,6 +18,7 @@ import { getRuleConfig, getScoreWeights, getGeneral, todayIso } from "../setting
 import { assessFreshness } from "../data/quality";
 import { z } from "zod";
 import { eventBacktest, below } from "../calc/backtest";
+import { forwardEstimates, type EpsEstimate, type parseInstitutionalHoldings } from "../providers/alphavantage";
 
 export const ValuationAssumptionsSchema = z.object({
   baseYear: z.number().int(),
@@ -104,8 +105,26 @@ export async function analyzeAsset(symbol: string) {
     fairValueBase = scenarios[0]!.results.find((r) => r.label === "basis")?.fairValue ?? null;
     if (assumptions.currency !== inst.currency) fairValueBase = null; // keine stille Umrechnung
   }
-  const forwardPe = assumptions?.epsForward && price != null && assumptions.epsForward > 0 ? price / assumptions.epsForward : null;
-  const pegR = peg(forwardPe, assumptions?.epsGrowthPct ?? null);
+  // Forward-Schätzungen: Provider-Konsens; manuelle Eingabe im Modell hat Vorrang (gekennzeichnet)
+  const estRows = fund.filter((f) => f.isEstimate && (f.periodType === "FY_EST" || f.periodType === "Q_EST"));
+  const estByPeriod = new Map<string, EpsEstimate>();
+  for (const r of estRows) {
+    const k = `${r.periodType}|${r.periodEnd.toISOString().slice(0, 10)}`;
+    const e = estByPeriod.get(k) ?? { periodEnd: r.periodEnd.toISOString().slice(0, 10), horizon: r.periodType === "FY_EST" ? "FY" : "Q", eps: null, epsHigh: null, epsLow: null, analysts: null, eps30dAgo: null, eps90dAgo: null, revisionsUp30d: null, revisionsDown30d: null, revenue: null } as EpsEstimate;
+    const map: Record<string, keyof EpsEstimate> = { EPS_EST: "eps", EPS_EST_HIGH: "epsHigh", EPS_EST_LOW: "epsLow", EPS_EST_ANALYSTS: "analysts", EPS_EST_30D_AGO: "eps30dAgo", EPS_EST_90D_AGO: "eps90dAgo", EPS_REV_UP_30D: "revisionsUp30d", EPS_REV_DOWN_30D: "revisionsDown30d", REVENUE_EST: "revenue" };
+    const key = map[r.metric];
+    if (key) (e as unknown as Record<string, unknown>)[key] = r.value;
+    estByPeriod.set(k, e);
+  }
+  const fwd = forwardEstimates([...estByPeriod.values()], today);
+  const estMeta = estRows[0] ? { provider: estRows[0].provider, fetchedAt: estRows.reduce((m, r) => (r.fetchedAt > m ? r.fetchedAt : m), estRows[0].fetchedAt) } : null;
+  const manualEps = assumptions?.epsForward && assumptions.epsForward > 0 ? assumptions.epsForward : null;
+  const fwdEps = manualEps ?? (inst.currency === "USD" ? fwd.fy1?.eps ?? null : null);
+  const forwardPeSource = manualEps ? "manuell (Bewertungsmodell)" : fwd.fy1 ? `Konsens ${estMeta?.provider ?? ""}, GJ bis ${fwd.fy1.periodEnd}, ${fwd.fy1.analysts ?? "?"} Analysten` : null;
+  const forwardPe = fwdEps && price != null ? price / fwdEps : null;
+  const growthForPeg = assumptions?.epsGrowthPct ?? fwd.growthPct;
+  const pegR = peg(forwardPe, growthForPeg);
+  const instSummary = (await prisma.setting.findUnique({ where: { key: `inst:${inst.symbol}` } }))?.value as (ReturnType<typeof parseInstitutionalHoldings> & { provider: string; fetchedAt: string }) | undefined;
 
   // Termine & Analysten
   const earnings = await prisma.earningsEvent.findMany({ where: { instrumentId: inst.id, reportDate: { gte: new Date(today + "T00:00:00Z") } }, orderBy: { reportDate: "asc" }, take: 3 });
@@ -114,7 +133,9 @@ export async function analyzeAsset(symbol: string) {
   lookback.setUTCDate(lookback.getUTCDate() - cfg.downgradeLookbackDays);
   const actions = await prisma.analystAction.findMany({ where: { instrumentId: inst.id }, orderBy: { date: "desc" }, take: 20 });
   const recentActs = actions.filter((a) => a.date >= lookback);
-  const insider = await prisma.insiderTransaction.findMany({ where: { instrumentId: inst.id }, orderBy: { transactionDate: "desc" }, take: 10 });
+  const insider = await prisma.insiderTransaction.findMany({ where: { instrumentId: inst.id }, orderBy: { transactionDate: "desc" }, take: 25 });
+  const insider90 = insider.filter((t) => t.transactionDate && t.transactionDate.getTime() >= Date.parse(today) - 90 * 86400000);
+  const insiderSummary = { openMarketBuys: insider90.filter((t) => t.type.startsWith("KAUF")).length, openMarketSells: insider90.filter((t) => t.type.startsWith("VERKAUF")).length, other: insider90.filter((t) => !t.type.startsWith("KAUF") && !t.type.startsWith("VERKAUF")).length };
   const politicians = await prisma.politicianTransaction.findMany({ where: { ticker: inst.symbol, isCurrent: true }, orderBy: { transactionDate: "desc" }, take: 10 });
 
   // Marktumfeld
@@ -150,7 +171,9 @@ export async function analyzeAsset(symbol: string) {
     netIncomePositive: ni[0] ? ni[0].value > 0 : null, sbcToRevenuePct: sbc[0] && rev[0] ? (sbc[0].value / rev[0].value) * 100 : null,
     fundamentalsAsOf: rev[0]?.filedAt?.toISOString().slice(0, 10) ?? null,
     breadthPctAbove: breadth.current.pctAbove, breadthEvaluated: breadth.current.evaluated, indexAbove30w: spy?.last != null && spy.ma30w != null ? spy.last > spy.ma30w : null, relStrength26wPct: inst.symbol === "SPY" ? null : rel26,
-    assetClassFlow20d: flows20 && flows20._count > 0 ? flows20._sum.netFlow : null, recentDowngrades: actions.length ? recentActs.filter((a) => a.action === "DOWNGRADE").length : null, recentUpgrades: actions.length ? recentActs.filter((a) => a.action === "UPGRADE").length : null,
+    assetClassFlow20d: flows20 && flows20._count > 0 ? flows20._sum.netFlow : null,
+    institutionalNetShares: instSummary?.netSharesChange ?? null, institutionalMixedPeriods: instSummary?.mixedPeriods ?? false,
+    estimateRevisionsUp30d: fwd.fy1?.revisionsUp30d ?? null, estimateRevisionsDown30d: fwd.fy1?.revisionsDown30d ?? null, estimateRevision30dPct: fwd.revision30dPct, recentDowngrades: actions.length ? recentActs.filter((a) => a.action === "DOWNGRADE").length : null, recentUpgrades: actions.length ? recentActs.filter((a) => a.action === "UPGRADE").length : null,
     weightPct: pos?.weightPct ?? (pos ? null : 0), maxWeightPct: inst.meta?.maxWeightPct ?? general.maxPositionWeightPct, targetWeightPct: inst.meta?.targetWeightPct ?? null, cashQuotaPct: portfolio.result.cashQuotaPct, sectorWeightPct: sectorWeight,
   }, cfg);
   const score = aggregateScore(components, weights, rules, { isHeld: !!pos, thesisIntact, minCompleteness: cfg.minScoreCompleteness });
@@ -180,13 +203,14 @@ export async function analyzeAsset(symbol: string) {
     stage, fib, fibConfluence: fib ? confluence(fib.levels, sma200Last) : [], zones, roundLevels: price != null ? roundLevels(price) : [], crosses: crosses.slice(-5), splits: { daily: splitsDaily, weekly: splitsWeekly },
     fundamentals: {
       revenue: rev.slice(0, 4), netIncome: ni.slice(0, 4), ocf: ocf[0] ?? null, capex: capex[0] ?? null, fcf, sbc: sbc[0] ?? null, shares: sh.slice(0, 3), buybacks: buy[0] ?? null,
-      revGrowth, prevRevGrowth, dilution, marketCap, fcfYield: fcfYieldPct(fcf, marketCap), forwardPe, peg: pegR,
+      revGrowth, prevRevGrowth, dilution, marketCap, fcfYield: fcfYieldPct(fcf, marketCap), forwardPe, forwardPeSource, peg: pegR, growthForPeg,
+      estimates: { fwd, meta: estMeta, all: [...estByPeriod.values()].sort((a, b) => (a.periodEnd < b.periodEnd ? 1 : -1)).slice(0, 8) },
       cash: fund.find((f) => f.metric === "CASH") ?? null, debt: fund.find((f) => f.metric === "LONG_TERM_DEBT") ?? null,
       suitability: metricSuitability((inst.businessModel as BusinessModel) ?? "STANDARD"),
       count: fund.length,
     },
     valuation: { assumptions, scenarios, fairValueBase, modelNote: vm?.note ?? null, updatedAt: vm?.updatedAt ?? null, currencyMismatch: assumptions ? assumptions.currency !== inst.currency : false },
-    earnings, actions, insider, politicians, rules, score, chart, weeklyChart,
+    earnings, actions, insider, insiderSummary, instSummary: instSummary ?? null, politicians, rules, score, chart, weeklyChart,
     market: { spy, breadth: breadth.current, rel26 },
   };
 }

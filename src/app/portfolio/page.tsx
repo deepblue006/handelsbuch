@@ -70,7 +70,8 @@ export default async function PortfolioPage() {
             <Field label="Gebühren"><input name="fees" inputMode="decimal" placeholder="0" /></Field>
             <Field label="Gebührenwährung"><input name="feeCurrency" maxLength={3} placeholder="wie Handelswährung" /></Field>
             <Field label={`Wechselkurs (${base} je 1 Handelswährung)`} hint="Pflicht für korrekten Einstand bei Fremdwährung"><input name="fxToBase" inputMode="decimal" /></Field>
-            <div className="col-span-2 md:col-span-3"><Field label="Notiz"><input name="note" /></Field></div>
+            <div className="col-span-2 md:col-span-2"><Field label="Notiz"><input name="note" /></Field></div>
+            <label className="flex items-end gap-2 pb-1 text-xs text-ink-2"><input type="checkbox" name="adjustCash" defaultChecked /> Liquidität entsprechend anpassen</label>
           </ActionForm>
           <p className="mt-2 text-[11px] text-ink-3">Es werden keine Broker-Zugänge, Seed-Phrasen oder privaten Schlüssel benötigt oder gespeichert. Buchungen sind reine Aufzeichnungen.</p>
         </Card>
@@ -89,7 +90,7 @@ export default async function PortfolioPage() {
             <Field label="Währung"><input name="currency" defaultValue={base} maxLength={3} /></Field>
             <Field label="Notiz"><input name="note" /></Field>
           </ActionForm>
-          <p className="mt-2 text-xs text-ink-2">Aktuelle Liquidität: {money(pf.cash.base, base)}. Käufe/Verkäufe verändern die Liquidität nicht automatisch – bitte Cashbewegungen selbst pflegen.</p>
+          <p className="mt-2 text-xs text-ink-2">Aktuelle Liquidität: {money(pf.cash.base, base)}. Buchungen passen die Liquidität nur an, wenn „Liquidität entsprechend anpassen“ gewählt ist (in Handelswährung; Fremdwährung wird mit aktuellem Kurs bewertet). CSV-/Altimporte ändern die Liquidität nicht.</p>
           {cash.length > 0 && <ul className="mt-2 max-h-40 overflow-auto text-xs">{cash.map((c) => <li key={c.id} className="border-b border-line py-1">{dateDe(c.date)} {c.type} {money(c.amount, c.currency)} {c.note}{c.isDemo && <Badge tone="bad">DEMO</Badge>}</li>)}</ul>}
         </Card>
         <Card title="Wechselkurs manuell (Fallback)">

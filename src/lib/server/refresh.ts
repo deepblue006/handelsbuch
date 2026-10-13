@@ -10,7 +10,7 @@ import { RateLimiter, ProviderError, fetchWithRetry } from "../providers/http";
 import { FRED_SERIES, fredSeries, ecbEurUsd, coingeckoChart, secTickerMap, secCompanyFacts, kalshiFedMarkets } from "../providers/official";
 import { fromAlphaVantage, parseHouseIndexXml } from "../politics/normalize";
 import { parseRss } from "../social/truthsocial";
-import { withFetchLog, countCallsToday, upsertBars, upsertMacro, upsertEarnings, ingestPoliticianTx } from "./ingest";
+import { withFetchLog, countCallsToday, upsertBars, upsertMacro, upsertEarnings, ingestPoliticianTx, upsertEstimates, upsertInsider, upsertInstitutional } from "./ingest";
 import { todayIso } from "../settings";
 
 export async function isEnabled(providerId: string): Promise<boolean> {
@@ -78,8 +78,16 @@ export async function refreshAlphaVantage(): Promise<JobResult[]> {
   for (const inst of instruments.filter((i) => i.assetType === "STOCK")) {
     await run(`earnings:${inst.symbol}`, async () => { const e = await client.earnings(inst.symbol); return { received: e.length, processed: await upsertEarnings(inst.id, e, "alphavantage", fetchedAt()) }; });
   }
+  for (const inst of instruments.filter((i) => i.assetType === "STOCK")) {
+    await run(`estimates:${inst.symbol}`, async () => { const e = await client.estimates(inst.symbol); return { received: e.length, processed: await upsertEstimates(inst.id, e, "alphavantage", fetchedAt()) }; });
+  }
   for (const inst of instruments.filter((i) => i.assetType === "CRYPTO" && !process.env.COINGECKO_API_KEY)) {
     await run(`crypto:${inst.symbol}`, async () => { const s = await client.cryptoDaily(inst.symbol, inst.currency, today); return { received: s.bars.length, processed: await upsertBars(inst.id, s, "alphavantage", fetchedAt(), { skipPartial: true }) }; });
+  }
+  const fromDate = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+  for (const inst of instruments.filter((i) => i.assetType === "STOCK")) {
+    await run(`insider:${inst.symbol}`, async () => { const t = await client.insider(inst.symbol, fromDate); return { received: t.length, processed: await upsertInsider(inst.id, t, "alphavantage", fetchedAt()), note: "Alpha Vantage liefert kein Meldedatum (Form 4: i. d. R. binnen 2 Geschäftstagen)" }; });
+    await run(`institutional:${inst.symbol}`, async () => { const r = await client.institutional(inst.symbol); return { received: r.holdings.length, processed: await upsertInstitutional(inst.symbol, r, "alphavantage", fetchedAt()), note: r.mixedPeriods ? `Gemischte Meldestichtage: ${r.reportPeriods.join(", ")}` : undefined }; });
   }
   const held = instruments.filter((i) => i.assetType === "STOCK");
   for (const inst of held) {

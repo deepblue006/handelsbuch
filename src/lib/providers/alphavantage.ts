@@ -285,8 +285,183 @@ export class AlphaVantageClient {
     const { json } = await this.get({ function: "CONGRESS_TRADES", symbol, datatype: "json" });
     return parseCongressTrades(json);
   }
+  async estimates(symbol: string) {
+    const { json } = await this.get({ function: "EARNINGS_ESTIMATES", symbol });
+    return parseEarningsEstimates(json);
+  }
+  async insider(symbol: string, fromDate?: string) {
+    const { json } = await this.get({ function: "INSIDER_TRANSACTIONS", symbol, ...(fromDate ? { from_date: fromDate } : {}) });
+    return parseInsiderTransactions(json);
+  }
+  async institutional(symbol: string) {
+    const { json } = await this.get({ function: "INSTITUTIONAL_HOLDINGS", symbol });
+    return parseInstitutionalHoldings(json);
+  }
   async cryptoDaily(symbol: string, market: string, today: string) {
     const { json } = await this.get({ function: "DIGITAL_CURRENCY_DAILY", symbol, market, datatype: "json" });
     return parseTimeSeries(json, "DAY", market, today);
   }
+}
+
+// ---------- Analystenschätzungen (EARNINGS_ESTIMATES) ----------
+
+const EstimateSchema = z.object({
+  date: z.string(),
+  horizon: z.string(),
+  eps_estimate_average: z.string().nullable(),
+  eps_estimate_high: z.string().nullable().optional(),
+  eps_estimate_low: z.string().nullable().optional(),
+  eps_estimate_analyst_count: z.string().nullable().optional(),
+  eps_estimate_average_30_days_ago: z.string().nullable().optional(),
+  eps_estimate_average_90_days_ago: z.string().nullable().optional(),
+  eps_estimate_revision_up_trailing_30_days: z.string().nullable().optional(),
+  eps_estimate_revision_down_trailing_30_days: z.string().nullable().optional(),
+  revenue_estimate_average: z.string().nullable().optional(),
+  revenue_estimate_analyst_count: z.string().nullable().optional(),
+});
+
+export interface EpsEstimate {
+  periodEnd: string;
+  horizon: "FY" | "Q";
+  eps: number | null;
+  epsHigh: number | null;
+  epsLow: number | null;
+  analysts: number | null;
+  eps30dAgo: number | null;
+  eps90dAgo: number | null;
+  revisionsUp30d: number | null;
+  revisionsDown30d: number | null;
+  revenue: number | null;
+}
+
+export function parseEarningsEstimates(json: unknown): EpsEstimate[] {
+  const err = detectAvError(json);
+  if (err) throw err;
+  const arr = (json as { estimates?: unknown[] }).estimates;
+  if (!Array.isArray(arr)) throw new ProviderError("Feld 'estimates' fehlt", "FORMAT");
+  return arr.flatMap((e) => {
+    const p = EstimateSchema.safeParse(e);
+    if (!p.success || !/^\d{4}-\d{2}-\d{2}$/.test(p.data.date)) return [];
+    const x = p.data;
+    return [{
+      periodEnd: x.date,
+      horizon: /year/i.test(x.horizon) ? "FY" as const : "Q" as const,
+      eps: num(x.eps_estimate_average), epsHigh: num(x.eps_estimate_high), epsLow: num(x.eps_estimate_low),
+      analysts: num(x.eps_estimate_analyst_count), eps30dAgo: num(x.eps_estimate_average_30_days_ago), eps90dAgo: num(x.eps_estimate_average_90_days_ago),
+      revisionsUp30d: num(x.eps_estimate_revision_up_trailing_30_days), revisionsDown30d: num(x.eps_estimate_revision_down_trailing_30_days),
+      revenue: num(x.revenue_estimate_average),
+    }];
+  });
+}
+
+/**
+ * FY1 = erstes Geschäftsjahr, dessen Ende NACH dem Stichtag liegt; FY2 = das darauf folgende.
+ * Ein bereits beendetes, aber noch nicht berichtetes Geschäftsjahr gilt nicht als „forward“.
+ * Erwartetes EPS-Wachstum = FY2 / FY1 − 1 (nur wenn beide positiv).
+ */
+export function forwardEstimates(est: EpsEstimate[], today: string) {
+  const fy = est.filter((e) => e.horizon === "FY" && e.eps != null).sort((a, b) => (a.periodEnd < b.periodEnd ? -1 : 1));
+  const future = fy.filter((e) => e.periodEnd > today);
+  const fy1 = future[0] ?? null;
+  const fy2 = future[1] ?? null;
+  const unreported = fy.filter((e) => e.periodEnd <= today).at(-1) ?? null;
+  const growthPct = fy1?.eps && fy2?.eps && fy1.eps > 0 && fy2.eps > 0 ? (fy2.eps / fy1.eps - 1) * 100 : unreported?.eps && fy1?.eps && unreported.eps > 0 && fy1.eps > 0 ? (fy1.eps / unreported.eps - 1) * 100 : null;
+  const growthBasis = fy1 && fy2 ? "FY2 ÷ FY1" : unreported && fy1 ? "FY1 ÷ abgelaufenes, noch nicht berichtetes GJ (Schätzung)" : null;
+  const revision30dPct = fy1?.eps != null && fy1.eps30dAgo ? ((fy1.eps - fy1.eps30dAgo) / Math.abs(fy1.eps30dAgo)) * 100 : null;
+  return { fy1, fy2, unreportedFy: unreported, growthPct, growthBasis, revision30dPct };
+}
+
+// ---------- Insidertransaktionen (INSIDER_TRANSACTIONS) ----------
+
+const InsiderSchema = z.object({
+  transaction_date: z.string(),
+  ticker: z.string(),
+  executive: z.string(),
+  executive_title: z.string().nullable().optional(),
+  security_type: z.string().nullable().optional(),
+  acquisition_or_disposal: z.string(),
+  shares: z.string().nullable().optional(),
+  share_price: z.string().nullable().optional(),
+});
+
+/** SEC-Form-4-Transaktionscodes (Auswahl). Nur „P“ ist ein Kauf am offenen Markt. */
+export const FORM4_CODES: Record<string, { label: string; kind: "KAUF" | "VERKAUF" | "ZUTEILUNG" | "SONSTIGE" }> = {
+  P: { label: "Kauf am offenen Markt", kind: "KAUF" },
+  S: { label: "Verkauf am offenen Markt", kind: "VERKAUF" },
+  A: { label: "Zuteilung/Gewährung (z. B. RSU)", kind: "ZUTEILUNG" },
+  M: { label: "Ausübung/Umwandlung derivativer Rechte", kind: "SONSTIGE" },
+  F: { label: "Einbehalt für Steuern/Ausübungspreis", kind: "SONSTIGE" },
+  G: { label: "Schenkung", kind: "SONSTIGE" },
+  D: { label: "Rückgabe an den Emittenten", kind: "SONSTIGE" },
+  C: { label: "Umwandlung", kind: "SONSTIGE" },
+  X: { label: "Ausübung (im Geld)", kind: "SONSTIGE" },
+};
+
+export interface InsiderTx {
+  date: string;
+  insider: string;
+  role: string | null;
+  security: string | null;
+  code: string;
+  codeLabel: string;
+  kind: "KAUF" | "VERKAUF" | "ZUTEILUNG" | "SONSTIGE";
+  shares: number | null;
+  price: number | null;
+  dedupeKey: string;
+}
+
+export function parseInsiderTransactions(json: unknown): InsiderTx[] {
+  const err = detectAvError(json);
+  if (err) throw err;
+  const arr = (json as { data?: unknown[] }).data;
+  if (!Array.isArray(arr)) throw new ProviderError("Feld 'data' fehlt", "FORMAT");
+  const seen = new Map<string, number>();
+  return arr.flatMap((r) => {
+    const p = InsiderSchema.safeParse(r);
+    if (!p.success || !/^\d{4}-\d{2}-\d{2}$/.test(p.data.transaction_date)) return [];
+    const x = p.data;
+    const code = x.acquisition_or_disposal.trim().toUpperCase();
+    const c = FORM4_CODES[code] ?? { label: `Code ${code} (unbekannt)`, kind: "SONSTIGE" as const };
+    const base = [x.ticker, x.transaction_date, x.executive, code, x.security_type ?? "", x.shares ?? "", x.share_price ?? ""].join("|");
+    const n = (seen.get(base) ?? 0) + 1; // identische Zeilen sind mehrere Teilausführungen – nicht verwerfen
+    seen.set(base, n);
+    const price = num(x.share_price);
+    return [{ date: x.transaction_date, insider: x.executive, role: x.executive_title ?? null, security: x.security_type ?? null, code, codeLabel: c.label, kind: c.kind, shares: num(x.shares), price: price === 0 && c.kind !== "KAUF" && c.kind !== "VERKAUF" ? null : price, dedupeKey: `av|${base}|${n}` }];
+  });
+}
+
+// ---------- Institutionelle Beteiligungen (INSTITUTIONAL_HOLDINGS, 13F-basiert) ----------
+
+const InstSchema = z.object({
+  symbol: z.string(),
+  total_institutional_holders: z.string().nullable().optional(),
+  holders_with_increased_holdings: z.string().nullable().optional(),
+  holders_with_decreased_holdings: z.string().nullable().optional(),
+  shares_with_increased_holdings: z.string().nullable().optional(),
+  shares_with_decreased_holdings: z.string().nullable().optional(),
+  total_institutional_ownership_percentage: z.string().nullable().optional(),
+  holdings: z.array(z.object({ holder_name: z.string(), shares_held: z.string().nullable(), shares_changed: z.string().nullable().optional(), change_type: z.string().nullable().optional(), last_reported: z.string().nullable().optional() })).default([]),
+  holdings_truncated: z.boolean().optional(),
+});
+
+export function parseInstitutionalHoldings(json: unknown) {
+  const err = detectAvError(json);
+  if (err) throw err;
+  const p = InstSchema.safeParse(json);
+  if (!p.success) throw new ProviderError("Institutionelle Beteiligungen: unerwartetes Format", "FORMAT");
+  const x = p.data;
+  const periods = [...new Set(x.holdings.map((h) => h.last_reported).filter((d): d is string => !!d))].sort();
+  const incShares = num(x.shares_with_increased_holdings), decShares = num(x.shares_with_decreased_holdings);
+  return {
+    symbol: x.symbol,
+    holders: num(x.total_institutional_holders),
+    increased: num(x.holders_with_increased_holdings),
+    decreased: num(x.holders_with_decreased_holdings),
+    netSharesChange: incShares != null && decShares != null ? incShares - decShares : null,
+    ownershipPct: num((x.total_institutional_ownership_percentage ?? "").replace("%", "")),
+    holdings: x.holdings.map((h) => ({ holder: h.holder_name, shares: num(h.shares_held), change: num(h.shares_changed), changeType: h.change_type ?? null, reportPeriod: h.last_reported ?? null })),
+    reportPeriods: periods,
+    mixedPeriods: periods.length > 1,
+    truncated: x.holdings_truncated ?? false,
+  };
 }

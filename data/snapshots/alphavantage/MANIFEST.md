@@ -24,3 +24,11 @@ Festgestellte Einschränkungen des Free-Keys (Fehlermeldungen der API am 11.10.2
 Nutzung: `npm run db:import-snapshot` lädt diese Dateien über die regulären Parser in die Datenbank
 (Provider `alphavantage_snapshot`). Im Dashboard sind sie als „Snapshot“ gekennzeichnet.
 Weitergabe der Rohdaten unterliegt den Nutzungsbedingungen von Alpha Vantage.
+
+## Ergänzung 13.10.2026 (Abruf ca. 14:15–14:20 UTC, gleicher Weg)
+| Datei | Funktion | Hinweise |
+|---|---|---|
+| BRENT_DAILY.json | BRENT (daily) | vollständige Rohantwort |
+| EARNINGS_ESTIMATES_AAPL_EXCERPT.json | EARNINGS_ESTIMATES | **Auszug** (4 von 38 Einträgen, Werte unverändert); historische Quartalsschätzungen sind nicht split-bereinigt (z. B. 2019: 4,55 USD) |
+| INSIDER_TRANSACTIONS_AAPL_EXCERPT.json | INSIDER_TRANSACTIONS | **Auszug** (6 von 91 Einträgen ab 01.04.2026); Feld `acquisition_or_disposal` enthält Form-4-Transaktionscodes; **kein Meldedatum** |
+| INSTITUTIONAL_HOLDINGS_AAPL_EXCERPT.json | INSTITUTIONAL_HOLDINGS | **Auszug** (Kopfdaten + 2 von 6.423 Haltern); Stichtage je Halter unterschiedlich |

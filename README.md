@@ -25,6 +25,8 @@ und sind konfigurierbare Startparameter.
 | Marktbreite (% über SMA200) | implementiert und getestet; **Datenbasis fehlt** (Tageskurse eines Universums) |
 | Fundamentaldaten (SEC XBRL, Point-in-Time) | implementiert, Zugang fehlt (nicht verifiziert) |
 | Quartalstermine (Alpha Vantage) | Format verifiziert, Zugang fehlt; FOMC-Termine statisch (gegenprüfen) |
+| Konsensschätzungen → Forward-KGV, PEG, Schätzungsrevisionen (Alpha Vantage) | implementiert und mit echtem Auszug getestet; laufender Abruf: Zugang fehlt |
+| Insidertransaktionen (Form-4-Codes) und 13F-Beteiligungen (Alpha Vantage) | implementiert und mit echtem Auszug getestet; Meldedatum fehlt in der Quelle, 13F-Stichtage gemischt (gekennzeichnet) |
 | Zinserwartungen: Kalshi | implementiert, nicht verifiziert, standardmäßig aus · CME FedWatch: noch nicht implementiert (kostenpflichtig) |
 | ETF-/ETP-Flows (Import, Deduplizierung, Kumulierung, Lücken) | implementiert und getestet; kein automatischer Abruf (keine verifizierte API) |
 | Politiker-Radar: Sekundärquelle Alpha Vantage | implementiert und mit echten Daten (NVDA) getestet |
@@ -34,5 +36,6 @@ und sind konfigurierbare Startparameter.
 | On-Chain-Kennzahlen | noch nicht implementiert |
 | Truth Social | kein Live-Feed (keine zulässige Quelle verifiziert); optionaler RSS-Import implementiert, nicht verifiziert |
 | Kaufplan, Sparpläne, Tranchen, Rücksetzer-/KI-Stressszenario, Kaufsimulation | implementiert und getestet |
+| Buchung passt Liquidität optional an | implementiert und getestet (E2E) |
 | Backtest (ohne Look-ahead, Mindeststichprobe, Splitprüfung) | implementiert und getestet |
 | Datenstatus, Abrufprotokoll, Retry/Backoff, Ratenbegrenzung, Secret-Schwärzung, Basic Auth | implementiert und getestet |

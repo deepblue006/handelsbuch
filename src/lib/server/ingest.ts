@@ -1,3 +1,4 @@
+import type { EpsEstimate, InsiderTx, parseInstitutionalHoldings } from "../providers/alphavantage";
 /**
  * Schreibt Provider-Ergebnisse in die Datenbank und protokolliert jeden Abruf (FetchLog, ProviderState).
  */
@@ -165,4 +166,58 @@ export async function upsertFlows(rows: FlowRow[], fetchedAt: Date) {
     n++;
   }
   return n;
+}
+
+
+/** Analystenschätzungen als Fundamental-Zeilen (isEstimate = true). Abrufzeit = Datenstand der Schätzung. */
+export async function upsertEstimates(instrumentId: string, est: EpsEstimate[], provider: string, fetchedAt: Date) {
+  const rows: { metric: string; value: number | null; e: EpsEstimate }[] = [];
+  for (const e of est) {
+    rows.push({ metric: "EPS_EST", value: e.eps, e }, { metric: "EPS_EST_HIGH", value: e.epsHigh, e }, { metric: "EPS_EST_LOW", value: e.epsLow, e },
+      { metric: "EPS_EST_ANALYSTS", value: e.analysts, e }, { metric: "EPS_EST_30D_AGO", value: e.eps30dAgo, e }, { metric: "EPS_EST_90D_AGO", value: e.eps90dAgo, e },
+      { metric: "EPS_REV_UP_30D", value: e.revisionsUp30d, e }, { metric: "EPS_REV_DOWN_30D", value: e.revisionsDown30d, e }, { metric: "REVENUE_EST", value: e.revenue, e });
+  }
+  let n = 0;
+  for (const r of rows) {
+    if (r.value == null) continue;
+    const periodType = r.e.horizon === "FY" ? "FY_EST" : "Q_EST";
+    const periodEnd = new Date(r.e.periodEnd + "T00:00:00Z");
+    await prisma.fundamental.upsert({
+      where: { instrumentId_metric_periodEnd_periodType_provider: { instrumentId, metric: r.metric, periodEnd, periodType, provider } },
+      create: { instrumentId, metric: r.metric, periodEnd, periodType, value: r.value, unit: r.metric.startsWith("EPS_REV") || r.metric === "EPS_EST_ANALYSTS" ? "count" : "USD", isEstimate: true, provider, fetchedAt },
+      update: { value: r.value, fetchedAt },
+    });
+    n++;
+  }
+  return n;
+}
+
+export async function upsertInsider(instrumentId: string, tx: InsiderTx[], provider: string, fetchedAt: Date) {
+  let n = 0;
+  for (const t of tx) {
+    await prisma.insiderTransaction.upsert({
+      where: { dedupeKey: t.dedupeKey },
+      create: { instrumentId, insiderName: t.insider, role: t.role, transactionDate: new Date(t.date + "T00:00:00Z"), filedAt: null, type: `${t.kind}|${t.code}`, shares: t.shares, price: t.price, provider, fetchedAt, dedupeKey: t.dedupeKey },
+      update: { fetchedAt },
+    });
+    n++;
+  }
+  return n;
+}
+
+export async function upsertInstitutional(symbol: string, r: ReturnType<typeof parseInstitutionalHoldings>, provider: string, fetchedAt: Date) {
+  await prisma.setting.upsert({
+    where: { key: `inst:${symbol}` },
+    create: { key: `inst:${symbol}`, value: { ...r, holdings: r.holdings.slice(0, 25), provider, fetchedAt: fetchedAt.toISOString() } },
+    update: { value: { ...r, holdings: r.holdings.slice(0, 25), provider, fetchedAt: fetchedAt.toISOString() } },
+  });
+  for (const h of r.holdings.slice(0, 200)) {
+    if (!h.reportPeriod) continue;
+    await prisma.institutionalHolding.upsert({
+      where: { filerName_symbol_reportPeriod_provider: { filerName: h.holder, symbol, reportPeriod: new Date(h.reportPeriod + "T00:00:00Z"), provider } },
+      create: { filerName: h.holder, symbol, reportPeriod: new Date(h.reportPeriod + "T00:00:00Z"), shares: h.shares, changeShares: h.change, provider, fetchedAt },
+      update: { shares: h.shares, changeShares: h.change, fetchedAt },
+    });
+  }
+  return r.holdings.length;
 }

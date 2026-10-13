@@ -8,7 +8,8 @@ import { ActionForm } from "@/components/forms";
 import { ReverseValuation } from "@/components/reverse-valuation";
 import { saveValuation, saveMeta, addLevel, addThesisEvent, addAnalystAction } from "@/app/actions";
 import { COMPONENT_LABELS, STATE_LABELS } from "@/lib/score/score";
-import { money, num, pct, dateDe, compact, qty } from "@/lib/format";
+import { money, num, pct, dateDe, dateTimeDe, compact, qty } from "@/lib/format";
+import { FORM4_CODES } from "@/lib/providers/alphavantage";
 import { upcomingFomc } from "@/lib/fomc";
 import { classifyPeg } from "@/lib/calc/valuation";
 
@@ -180,7 +181,7 @@ export default async function AssetPage({ params }: { params: Promise<{ symbol: 
               </div>
             </>
           )}
-          {!isCrypto && <p className="mt-2 text-sm">Forward-KGV (FY1, aus Modell): <b>{num(a.fundamentals.forwardPe, 1)}</b> · PEG: <b>{a.fundamentals.peg.value != null ? `${num(a.fundamentals.peg.value, 2)} (${classifyPeg(a.fundamentals.peg.value, a.cfg.pegCheapBelow, a.cfg.pegExpensiveAbove)})` : <Missing>{a.fundamentals.peg.reason}</Missing>}</b></p>}
+          {!isCrypto && <p className="mt-2 text-sm">Forward-KGV (FY1): <b>{num(a.fundamentals.forwardPe, 1)}</b> <span className="text-xs text-ink-3">{a.fundamentals.forwardPeSource ? `(${a.fundamentals.forwardPeSource})` : "(keine Schätzung)"}</span> · PEG: <b>{a.fundamentals.peg.value != null ? `${num(a.fundamentals.peg.value, 2)} (${classifyPeg(a.fundamentals.peg.value, a.cfg.pegCheapBelow, a.cfg.pegExpensiveAbove)})` : <Missing>{a.fundamentals.peg.reason}</Missing>}</b></p>}
           {a.fundamentals.suitability.length > 0 && <div className="mt-2 text-xs text-warn">{a.fundamentals.suitability.map((s) => <p key={s.metric}>▲ {s.metric}: {s.reason}</p>)}</div>}
           <p className="mt-2 text-[11px] text-ink-3">Referenzheuristiken (grobe Orientierung): Umsatzwachstum ≥ {a.cfg.revenueGrowthMinPct} %, Ziel {a.cfg.revenueGrowthTargetLowPct}–{a.cfg.revenueGrowthTargetHighPct} %; PEG &lt; {a.cfg.pegCheapBelow} potenziell günstig, &gt; {a.cfg.pegExpensiveAbove} möglicherweise teuer; FCF-Rendite ab ca. {a.cfg.fcfYieldInterestingPct} % interessant; EV/Sales {a.cfg.evSalesRefLow}–{a.cfg.evSalesRefHigh} als grober Bereich bei unprofitablen Wachstumswerten. Bereinigte Gewinne auf SBC prüfen.</p>
         </Card>
@@ -246,13 +247,48 @@ export default async function AssetPage({ params }: { params: Promise<{ symbol: 
           <form action={addAnalystAction} className="mt-2 grid grid-cols-2 gap-1 text-xs"><input type="hidden" name="instrumentId" value={inst.id} /><input type="date" name="date" defaultValue={a.today} /><select name="action"><option value="DOWNGRADE">Herabstufung</option><option value="UPGRADE">Heraufstufung</option><option value="TARGET_CHANGE">Kursziel</option><option value="INIT">Erstbewertung</option><option value="REITERATE">Bestätigung</option></select><input name="firm" placeholder="Haus" /><input name="priceTarget" placeholder="Kursziel" /><button className="col-span-2 rounded border border-line">Erfassen</button></form>
           <p className="mt-2 text-[11px] text-ink-3">Sehr positive Stimmung kann bedeuten, dass Erwartungen eingepreist sind (Hinweis, keine Verkaufsregel).</p>
         </Card>
-        <Card title="Kontext: Insider, Politiker">
-          <p className="text-xs text-ink-2">Ergänzende Informationen mit Meldeverzögerung – keine Kaufgründe, keine Unterstellung von Motiven.</p>
+        <Card title="Kontext: Politikermeldungen">
+          <p className="text-xs text-ink-2">Ergänzende Information mit Meldeverzögerung – kein Kaufgrund, keine Unterstellung von Motiven.</p>
           <ul className="mt-2 text-xs">{a.politicians.map((p) => <li key={p.id}>{dateDe(p.transactionDate)} {p.politicianName} ({p.chamber}) {p.txType} {p.amountText} · eingereicht {dateDe(p.filedDate)}</li>)}{!a.politicians.length && <li className="text-ink-3">Keine Politikermeldungen zu diesem Ticker erfasst.</li>}</ul>
           {a.politicians.length > 0 && <Link className="text-xs text-accent" href={`/politiker?ticker=${inst.symbol}`}>Alle Meldungen →</Link>}
-          <p className="mt-2 text-xs text-ink-3">Insidertransaktionen: {a.insider.length ? a.insider.length : "keine Daten (SEC Form 4 noch nicht angebunden)"}</p>
         </Card>
       </div>
+
+      {!isCrypto && (
+        <div className="mt-4 grid gap-4 xl:grid-cols-3">
+          <Card title="Analystenschätzungen (Konsens)">
+            {a.fundamentals.estimates.all.length ? (
+              <>
+                <Table head={["Periode bis", "EPS Ø", "Spanne", "Analysten", "Rev. ↑/↓ 30 T."]}>
+                  {a.fundamentals.estimates.all.filter((e) => e.horizon === "FY" || e.periodEnd > a.today).slice(0, 5).map((e) => <tr key={e.horizon + e.periodEnd} className={e.periodEnd === a.fundamentals.estimates.fwd.fy1?.periodEnd ? "font-medium" : ""}><td>{e.horizon === "FY" ? "GJ" : "Q"} {dateDe(e.periodEnd)}{e.periodEnd === a.fundamentals.estimates.fwd.fy1?.periodEnd && " (FY1)"}</td><td className="num">{num(e.eps)}</td><td className="num text-xs">{num(e.epsLow)}–{num(e.epsHigh)}</td><td className="num">{num(e.analysts, 0)}</td><td className="num">{num(e.revisionsUp30d, 0)} / {num(e.revisionsDown30d, 0)}</td></tr>)}
+                </Table>
+                <p className="mt-2 text-xs">Erwartetes EPS-Wachstum: <b>{pct(a.fundamentals.estimates.fwd.growthPct)}</b> <span className="text-ink-3">({a.fundamentals.estimates.fwd.growthBasis ?? "–"})</span> · Revision FY1 (30 T.): {pct(a.fundamentals.estimates.fwd.revision30dPct, 2)}</p>
+                <p className="mt-1 text-[11px] text-ink-3">Quelle {a.fundamentals.estimates.meta?.provider}, Stand {dateTimeDe(a.fundamentals.estimates.meta?.fetchedAt ?? null)}. Schätzungen, keine Fakten; sehr positive Erwartungen können eingepreist sein. Historische Schätzungen ggf. nicht split-bereinigt.</p>
+              </>
+            ) : <Empty>Keine Konsensschätzungen (Alpha Vantage EARNINGS_ESTIMATES; Zugang fehlt).</Empty>}
+          </Card>
+          <Card title="Insidertransaktionen (Form 4)">
+            {a.insider.length ? (
+              <>
+                <p className="text-xs">Letzte 90 Tage: <b>{a.insiderSummary.openMarketBuys}</b> Käufe am offenen Markt · {a.insiderSummary.openMarketSells} Verkäufe · {a.insiderSummary.other} sonstige (Ausübung, Steuereinbehalt, Zuteilung, Schenkung)</p>
+                <ul className="mt-2 max-h-56 overflow-auto text-xs">{a.insider.map((t) => { const [kind, code] = t.type.split("|"); return <li key={t.id} className="border-b border-line py-0.5">{dateDe(t.transactionDate)} · {t.insiderName} <span className="text-ink-3">({t.role})</span> · <span className={kind === "KAUF" ? "text-good" : kind === "VERKAUF" ? "text-bad" : ""}>{FORM4_CODES[code ?? ""]?.label ?? code}</span> · {qty(t.shares)} Stk.{t.price != null ? ` @ ${money(t.price, cur)}` : ""}</li>; })}</ul>
+                <p className="mt-1 text-[11px] text-ink-3">Transaktionsdatum laut Quelle ({a.insider[0]?.provider}); Meldedatum wird nicht geliefert (Form 4 i. d. R. binnen 2 Geschäftstagen). Nur Käufe am offenen Markt (Code P) sind Insiderkäufe im engeren Sinn – ergänzende Information, kein Kaufgrund.</p>
+              </>
+            ) : <Empty>Keine Insiderdaten (Alpha Vantage INSIDER_TRANSACTIONS; Zugang fehlt).</Empty>}
+          </Card>
+          <Card title="Institutionelle Beteiligungen (13F)">
+            {a.instSummary ? (
+              <>
+                <p className="text-sm">{num(a.instSummary.holders, 0)} Institutionen · Anteil {pct(a.instSummary.ownershipPct, 0, false)}</p>
+                <p className="text-xs">Aufgestockt: {num(a.instSummary.increased, 0)} · reduziert: {num(a.instSummary.decreased, 0)} · netto {num((a.instSummary.netSharesChange ?? 0) / 1e6, 1)} Mio. Aktien</p>
+                <ul className="mt-2 text-xs">{a.instSummary.holdings.slice(0, 8).map((h) => <li key={h.holder}>{h.holder}: {num((h.shares ?? 0) / 1e6, 1)} Mio. ({h.changeType}, Stichtag {dateDe(h.reportPeriod)})</li>)}</ul>
+                {a.instSummary.mixedPeriods && <p className="mt-1"><Badge tone="warn">Unterschiedliche Stichtage: {a.instSummary.reportPeriods.map(dateDe).join(", ")}</Badge></p>}
+                <p className="mt-1 text-[11px] text-ink-3">13F-Meldungen erscheinen bis 45 Tage nach Quartalsende und zeigen nicht den aktuellen Bestand. Quelle {a.instSummary.provider}, Abruf {dateTimeDe(a.instSummary.fetchedAt)}{a.instSummary.truncated ? ", Liste gekürzt" : ""}.</p>
+              </>
+            ) : <Empty>Keine 13F-Daten (Alpha Vantage INSTITUTIONAL_HOLDINGS; Zugang fehlt).</Empty>}
+          </Card>
+        </div>
+      )}
 
       <Card title={`Regelwerk (${rules.outcomes.filter((o) => o.status === "AUSGELÖST").length} ausgelöst)`} className="mt-4">
         <Table head={["Regel", "Status", "Ergebnis", "Schwelle", "Mögliche Reaktion", "Grenzen", "Herkunft"]}>

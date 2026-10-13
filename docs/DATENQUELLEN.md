@@ -48,7 +48,9 @@ nicht live getestet · **NICHT_IMPLEMENTIERT** = bewusst kein Adapter · **NUR_L
 ## Festgestellte Datenlücken mit Auswirkung
 1. **200-Tage-Linie** für Aktien/Index-ETFs: mit Alpha Vantage Free nicht berechenbar (100 Tageskurse). Ersatzweise wird die **40-Wochen-Linie als gekennzeichnete Näherung** gezeigt; Regeln C5 und A1 bleiben ohne Tagesdaten „Daten fehlen“.
 2. **Marktbreite** (% Aktien über SMA200): benötigt Tageskurse für ein Universum (idealerweise Indexmitglieder). Mit Free-Limits praktisch nicht machbar → Premium-Provider oder manuelle externe Breite (`BREADTH_EXTERNAL`) nötig.
-3. **Forward-KGV, Analystenschätzungen, Ratings**: keine freie, lizenzierte Quelle verifiziert → manuell im Bewertungsmodell/Analystenformular.
+3. **Forward-KGV / Analystenschätzungen**: Alpha Vantage `EARNINGS_ESTIMATES` liefert Konsens-EPS/-Umsatz je Geschäftsjahr/Quartal mit Analystenzahl und Revisionen (Format am 13.10.2026 verifiziert). FY1 = erstes noch nicht beendetes Geschäftsjahr. **Ratings/Kursziele** und Herabstufungen: weiterhin keine verifizierte Quelle → manuelles Formular.
+7. **Insider (Form 4)**: Alpha Vantage `INSIDER_TRANSACTIONS` liefert Transaktionsdatum und Form-4-Code, aber **kein Meldedatum**. Nur Code P = Kauf am offenen Markt.
+8. **13F**: Alpha Vantage `INSTITUTIONAL_HOLDINGS` aggregiert Halter mit **unterschiedlichen Stichtagen** (z. B. 31.12.2025 und 30.06.2026) – kein aktueller Bestand.
 4. **Geld-/Briefkurse, Orderbuch**: kein Zugang → nicht verfügbar, wird nicht simuliert.
 5. **ETF-Flows**: keine verifizierte API → Import der Farside-Tabelle.
 6. **Indexstände**: S&P 500/Nasdaq-100/Russell 2000 über ETF-Proxys (SPY/QQQ/IWM), gekennzeichnet.

@@ -71,7 +71,16 @@ export async function addTransaction(_: ActionState, f: FormData): Promise<Actio
       const held = txs.reduce((s, t) => s + (t.side === "BUY" ? t.quantity : t.side === "SELL" ? -t.quantity : 0), 0);
       if (quantity > held + 1e-9) throw new Error(`Bestand am ${date}: ${held} – Verkauf von ${quantity} nicht möglich`);
     }
-    await prisma.transaction.create({ data: { instrumentId: i.id, side, tradeDate: new Date(date + "T00:00:00Z"), quantity, price, priceCurrency: inst.currency, fees, feeCurrency: str(f, "feeCurrency").toUpperCase() || inst.currency, fxToBase: inst.currency === general.baseCurrency ? 1 : fx, fxSource: fx != null ? "manuell" : null, note: str(f, "note") || null, seq: Date.now() % 2_000_000_000 } });
+    const feeCurrency = str(f, "feeCurrency").toUpperCase() || inst.currency;
+    const tx = await prisma.transaction.create({ data: { instrumentId: i.id, side, tradeDate: new Date(date + "T00:00:00Z"), quantity, price, priceCurrency: inst.currency, fees, feeCurrency, fxToBase: inst.currency === general.baseCurrency ? 1 : fx, fxSource: fx != null ? "manuell" : null, note: str(f, "note") || null, seq: Date.now() % 2_000_000_000 } });
+    if (str(f, "adjustCash") === "on") {
+      // Liquidität in Handelswährung buchen; Gebühr in eigener Währung separat, damit nichts umgerechnet werden muss
+      const gross = side === "DIVIDEND" ? quantity * price : quantity * price;
+      const day = new Date(date + "T00:00:00Z");
+      const ref = `Buchung ${tx.id.slice(-6)} (${side} ${i.symbol})`;
+      await prisma.cashMovement.create({ data: { date: day, type: side === "BUY" ? "WITHDRAWAL" : "DEPOSIT", amount: gross, currency: inst.currency, note: ref } });
+      if (fees > 0) await prisma.cashMovement.create({ data: { date: day, type: "WITHDRAWAL", amount: fees, currency: feeCurrency, note: `${ref} – Gebühr` } });
+    }
     revalidatePath("/", "layout");
     return { ok: true, message: `${side === "BUY" ? "Kauf" : side === "SELL" ? "Verkauf" : "Dividende"} ${i.symbol} gebucht.` };
   } catch (e) { return fail(e); }
