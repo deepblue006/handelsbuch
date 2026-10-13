@@ -270,6 +270,24 @@ export default async function AssetPage({ params }: { params: Promise<{ symbol: 
         </Table>
       </Card>
 
+      <Card title="Historische Prüfung der Signale (Backtest)" className="mt-4">
+        <Table head={["Signal", "Status", "Stichprobe", "Ø Rendite", "Median", "Trefferquote", "Basisrate (alle Tage)", "Zeitraum"]}>
+          {a.backtests.map((b) => (
+            <tr key={b.label}>
+              <td className="text-xs">{b.label}</td>
+              <td>{b.r ? <Badge tone={b.r.status === "OK" ? "info" : "warn"}>{b.r.status.replace("_", " ")}</Badge> : <Badge tone="warn">keine Daten</Badge>}<div className="text-[11px] text-ink-3">{b.r?.reason ?? b.note}</div></td>
+              <td className="num">{b.r?.sampleSize ?? "–"}</td>
+              <td className="num">{b.r?.status === "OK" ? pct(b.r.avgReturnPct) : "–"}</td>
+              <td className="num">{b.r?.status === "OK" ? pct(b.r.medianReturnPct) : "–"}</td>
+              <td className="num">{b.r?.status === "OK" ? pct(b.r.hitRatePct, 0, false) : "–"}</td>
+              <td className="num">{b.r?.status === "OK" ? pct(b.r.baselineAvgPct) : "–"}</td>
+              <td className="text-xs">{b.r ? `${dateDe(b.r.period.from)}–${dateDe(b.r.period.to)}` : "–"}</td>
+            </tr>
+          ))}
+        </Table>
+        <p className="mt-2 text-[11px] text-ink-3">{a.backtests.find((b) => b.r)?.r?.method} Grenzen: ein Titel (Survivorship-Bias der Auswahl), keine Steuern/Slippage, Fundamentaldaten- und Analystenregeln nicht enthalten. Positives Ergebnis ist kein Beweis für zukünftigen Erfolg.</p>
+      </Card>
+
       <Card title="Thesen-Tagebuch" className="mt-4">
         <ul className="text-xs">{inst.thesisEvents.map((e) => <li key={e.id}>{dateDe(e.date)} · {e.kind} · {e.text}</li>)}{!inst.thesisEvents.length && <li className="text-ink-3">Noch keine Einträge</li>}</ul>
         <form action={addThesisEvent} className="mt-2 flex flex-wrap gap-2 text-xs"><input type="hidden" name="instrumentId" value={inst.id} /><select name="kind"><option value="POSITIV">positive Entwicklung</option><option value="NEGATIV">negative Entwicklung</option><option value="EREIGNIS">Ereignis</option><option value="THESE_VERLETZT">These verletzt</option></select><input name="text" className="min-w-64 flex-1" placeholder="Beobachtung" /><button className="rounded border border-line px-2">Eintragen</button></form>

@@ -4,9 +4,9 @@
   "private": true,
   "description": "Persönliches Investment-Dashboard für Aktien, ETFs und Krypto – Analyse- und Entscheidungshilfe, keine automatische Orderausführung.",
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -H 127.0.0.1",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -H 127.0.0.1",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -18,7 +18,9 @@
     "db:import-snapshot": "tsx scripts/import-snapshot.ts",
     "refresh": "tsx scripts/refresh.ts",
     "scheduler": "tsx scripts/scheduler.ts",
-    "check:secrets": "tsx scripts/check-secrets.ts"
+    "check:secrets": "tsx scripts/check-secrets.ts",
+    "test:integration": "vitest run tests/integration",
+    "db:reset-test": "tsx scripts/reset-test-db.ts"
   },
   "dependencies": {
     "@prisma/client": "6.19.3",

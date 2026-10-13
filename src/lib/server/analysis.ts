@@ -17,6 +17,7 @@ import { indexViews, breadthView } from "./market";
 import { getRuleConfig, getScoreWeights, getGeneral, todayIso } from "../settings";
 import { assessFreshness } from "../data/quality";
 import { z } from "zod";
+import { eventBacktest, below } from "../calc/backtest";
 
 export const ValuationAssumptionsSchema = z.object({
   baseYear: z.number().int(),
@@ -160,8 +161,13 @@ export async function analyzeAsset(symbol: string) {
   const rsiW = ind.rsi14w;
   const weeklyChart = weeklyBars.slice(-260).map((b, i, arr) => { const k = weeklyBars.length - arr.length + i; return { date: b.date, close: b.close, sma30w: ind.sma30w[k] ?? null, sma200w: ind.sma200w[k] ?? null, rsi14w: rsiW[k] ?? null }; });
 
+  const backtests = [
+    { label: `RSI 14 (Tage) < ${cfg.rsiOversold}, Haltedauer 20 Handelstage`, r: daily.bars.length >= 200 ? eventBacktest(daily.bars, below(ind.rsi14, cfg.rsiOversold), { holdBars: 20, adjusted: daily.adjusted }) : null, note: `${daily.bars.length} Tageskurse – mindestens 200 nötig` },
+    { label: `RSI 14 (Wochen) < ${cfg.rsiOversold}, Haltedauer 13 Wochen`, r: weeklyBars.length >= 100 ? eventBacktest(weeklyBars, below(ind.rsi14w, cfg.rsiOversold), { holdBars: 13, adjusted: weeklyDb.adjusted }) : null, note: `${weeklyBars.length} Wochenkurse – mindestens 100 nötig` },
+  ];
+
   return {
-    inst, today, general, cfg, price, priceDate, position: pos, priceInfo,
+    inst, today, general, cfg, price, priceDate, position: pos, priceInfo, backtests,
     dailyMeta: seriesMeta(daily, today, "daily"), weeklyMeta: { ...seriesMeta(weeklyDb.bars.length ? weeklyDb : { ...daily, bars: weeklyBars }, today, "weekly"), source: weeklySource },
     indicators: {
       sma50: ind.sma50.at(-1) ?? null, sma100: ind.sma100.at(-1) ?? null, sma200: sma200Last, ema10: ind.ema10.at(-1) ?? null, ema20: ind.ema20.at(-1) ?? null,
