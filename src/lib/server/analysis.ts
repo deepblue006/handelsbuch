@@ -69,7 +69,7 @@ export async function analyzeAsset(symbol: string) {
 
   const stage = wc.length ? weinsteinStage(wc) : null;
   const fibBase = daily.bars.length >= 30 ? daily.bars : weeklyBars;
-  const fib = fibBase.length >= 2 ? fibonacci(fibBase, daily.bars.length >= 30 ? 126 : 52) : null;
+  const fib = fibBase.length >= 2 ? fibonacci(fibBase, daily.bars.length >= 30 ? 126 : 52, fibBase.length - 1, daily.bars.length >= 30 ? "Handelstage" : "Wochen") : null;
   const sma200Last = ind.sma200.at(-1) ?? null;
   const pv = pivots(fibBase.slice(-260), daily.bars.length >= 30 ? 5 : 3);
   const zones = price != null ? zonesFromPivots(pv, price) : [];

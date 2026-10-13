@@ -281,7 +281,7 @@ export const FIB_RATIOS = [0.236, 0.382, 0.5, 0.618, 0.786];
  * Abwärtsbewegung (Hoch vor Tief): Level = Tief + (Hoch − Tief)·r
  * Golden Pocket: Bereich zwischen den Ratios 0,618 und 0,65.
  */
-export function fibonacci(bars: Bar[], lookback = 126, endIndex = bars.length - 1): FibResult | null {
+export function fibonacci(bars: Bar[], lookback = 126, endIndex = bars.length - 1, unit = "Handelstage"): FibResult | null {
   if (endIndex < 1 || bars.length === 0) return null;
   const start = Math.max(0, endIndex - lookback + 1);
   let hi = -Infinity, lo = Infinity, hiIdx = -1, loIdx = -1;
@@ -302,7 +302,7 @@ export function fibonacci(bars: Bar[], lookback = 126, endIndex = bars.length - 
     direction: up ? "AUFWÄRTS" : "ABWÄRTS",
     levels: FIB_RATIOS.map((ratio) => ({ ratio, price: lvl(ratio) })),
     goldenPocket: { from: Math.min(lvl(0.618), lvl(0.65)), to: Math.max(lvl(0.618), lvl(0.65)) },
-    method: `Höchst- und Tiefstkurs der letzten ${Math.min(lookback, endIndex - start + 1)} Handelstage bis ${bars[endIndex]!.date} (Hoch/Tief der Tageskerzen)`,
+    method: `Höchst- und Tiefstkurs der letzten ${Math.min(lookback, endIndex - start + 1)} ${unit} bis ${bars[endIndex]!.date} (Hoch/Tief der Kerzen)`,
   };
 }
 

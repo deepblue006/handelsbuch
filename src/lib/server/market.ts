@@ -1,6 +1,7 @@
 /**
  * Marktlage & Finanzwiesel-Kennzahlen: Indizes (ETF-Proxys), Marktbreite, Zinsen, Öl, Gold, Währung, Bewertungskontext.
  */
+import { cache } from "react";
 import { prisma } from "../db";
 import { sma, weinsteinStage, distancePct, detectPossibleSplits } from "../calc/indicators";
 import { breadthAt, drawdownFromHigh, breadthSeries } from "../calc/breadth";
@@ -37,7 +38,7 @@ export interface IndexView {
   weekly: { date: string; close: number; ma30: number | null; ma40: number | null }[];
 }
 
-export async function indexViews(): Promise<IndexView[]> {
+export const indexViews = cache(async (): Promise<IndexView[]> => {
   const out: IndexView[] = [];
   for (const p of INDEX_PROXIES) {
     const inst = await prisma.instrument.findUnique({ where: { symbol: p.symbol } });
@@ -60,9 +61,9 @@ export async function indexViews(): Promise<IndexView[]> {
     });
   }
   return out;
-}
+});
 
-export async function breadthView(asOf: string) {
+export const breadthView = cache(async (asOf: string) => {
   const universe = await prisma.instrument.findMany({ where: { inBreadthUniverse: true }, orderBy: { symbol: "asc" } });
   const inputs = [];
   for (const u of universe) {
@@ -75,7 +76,7 @@ export async function breadthView(asOf: string) {
   for (let i = 25; i >= 0; i--) { const x = new Date(t); x.setUTCDate(x.getUTCDate() - i * 7); dates.push(x.toISOString().slice(0, 10)); }
   const external = await macro(["BREADTH_EXTERNAL"]);
   return { current, history: breadthSeries(inputs, dates), external, representative: current.evaluated >= 20 };
-}
+});
 
 export interface MacroCard {
   id: string;

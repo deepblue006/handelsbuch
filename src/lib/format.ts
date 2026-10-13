@@ -36,7 +36,7 @@ export function dateDe(iso: string | Date | null | undefined): string {
 export function dateTimeDe(d: Date | string | null | undefined, tz = "Europe/Berlin"): string {
   if (!d) return "–";
   const date = typeof d === "string" ? new Date(d) : d;
-  return new Intl.DateTimeFormat("de-DE", { timeZone: tz, dateStyle: "medium", timeStyle: "short", timeZoneName: "short" }).format(date);
+  return new Intl.DateTimeFormat("de-DE", { timeZone: tz, day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" }).format(date);
 }
 export function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);

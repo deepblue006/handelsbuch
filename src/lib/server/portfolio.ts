@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { prisma } from "../db";
 import { computePortfolio, type PInstrument, type PTx, type PortfolioResult } from "../calc/portfolio";
 import { fxTable, latestPrice, type PriceInfo } from "./data";
@@ -13,7 +14,7 @@ export interface PortfolioView {
   base: string;
 }
 
-export async function loadPortfolio(): Promise<PortfolioView> {
+export const loadPortfolio = cache(async function loadPortfolio(): Promise<PortfolioView> {
   const general = await getGeneral();
   const base = general.baseCurrency;
   const today = todayIso(general.timezone);
@@ -46,4 +47,4 @@ export async function loadPortfolio(): Promise<PortfolioView> {
   const result = computePortfolio(pInst, pTx, [...prices.values()], table, { baseCurrency: base, today, cashBase });
   const hasDemo = txs.some((t) => t.isDemo) || cashRows.some((c) => c.isDemo) || instruments.some((i) => i.isDemo);
   return { result, prices, hasDemo, cash: { base: cashBase, movements: cashRows.length, missingFx: [...new Set(missingFx)] }, fxRates: rates, today, base };
-}
+});
