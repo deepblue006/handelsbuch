@@ -5,9 +5,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { prisma } from "../src/lib/db";
-import { parseTimeSeries, parseEconomic, parseGoldSilver, parseFxDaily, parseCongressTrades, parseEarningsEstimates, parseInsiderTransactions, parseInstitutionalHoldings } from "../src/lib/providers/alphavantage";
+import { parseTimeSeries, parseEconomic, parseGoldSilver, parseFxDaily, parseCongressTrades, parseEarningsEstimates, parseInsiderTransactions, parseInstitutionalHoldings, parseSplits } from "../src/lib/providers/alphavantage";
 import { fromAlphaVantage } from "../src/lib/politics/normalize";
-import { ensureInstrument, upsertBars, upsertMacro, ingestPoliticianTx, withFetchLog, upsertEstimates, upsertInsider, upsertInstitutional } from "../src/lib/server/ingest";
+import { ensureInstrument, upsertBars, upsertMacro, ingestPoliticianTx, withFetchLog, upsertEstimates, upsertInsider, upsertInstitutional, upsertSplits } from "../src/lib/server/ingest";
 import { SNAPSHOT_PROVIDER } from "../src/lib/server/data";
 import { SECTOR_ETFS, SECTOR_ETF_TAG } from "../src/lib/server/market";
 
@@ -73,6 +73,20 @@ async function main() {
     console.log("Kongressmeldungen:", c);
     return { received: r.trades.length, processed: r.trades.length };
   });
+  // Splitlisten (SPLITS_<SYMBOL>.json), sofern als Snapshot vorhanden
+  for (const f of fs.readdirSync(DIR).filter((x) => /^SPLITS_[A-Z.]+\.json$/.test(x))) {
+    const sym = f.slice(7, -5);
+    const inst = await prisma.instrument.findUnique({ where: { symbol: sym } });
+    if (!inst) continue;
+    // Abrufzeitpunkt muss im Snapshot stehen (Feld _fetchedAt), Dateizeiten sind nach git checkout bedeutungslos
+    const raw = load(f) as { _fetchedAt?: string };
+    if (!raw._fetchedAt || Number.isNaN(Date.parse(raw._fetchedAt))) { console.warn(`${f}: _fetchedAt fehlt – übersprungen`); continue; }
+    const fetched = new Date(raw._fetchedAt);
+    await withFetchLog(SNAPSHOT_PROVIDER, `splits:${sym}`, async () => {
+      const r = parseSplits(raw);
+      return { received: r.splits.length + r.invalid, processed: await upsertSplits(inst.id, r.splits, SNAPSHOT_PROVIDER, `Alpha Vantage SPLITS (Snapshot ${fetched.toISOString().slice(0, 10)})`, fetched) };
+    });
+  }
   await prisma.sourceCoverage.upsert({
     where: { provider_institution_docType: { provider: "alphavantage", institution: "US House & Senate (aggregiert)", docType: "PTR (Sekundärquelle)" } },
     create: { provider: "alphavantage", institution: "US House & Senate (aggregiert)", docType: "PTR (Sekundärquelle)", periodsChecked: "nur Ticker NVDA (Snapshot 11.10.2026)", lastSuccessAt: FETCHED_AT, docsFound: 436, docsProcessed: 436, txExtracted: 436, knownGaps: "Nur ein Ticker abgefragt; keine Vollständigkeit. Originaldokumente nicht geprüft.", lastCompletedAt: FETCHED_AT },

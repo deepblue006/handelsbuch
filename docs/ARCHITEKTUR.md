@@ -31,6 +31,7 @@ index.html             bisheriges Handelsbuch (unverändert, eigenständig nutzb
 - **Score:** fehlende Komponenten werden nicht neutral gezählt; Vollständigkeit und effektive Gewichte sind sichtbar; nicht anwendbare Komponenten (Bewertung bei Krypto) werden ausgewiesen.
 - **Regeln** liefern AUSGELÖST / NICHT_AUSGELÖST / DATEN_FEHLEN / NICHT_ANWENDBAR und werden nie verrechnet; Konflikte werden ausgewiesen. Krypto: Aktienregeln nicht anwendbar, Charttechnik als „Dashboard-Erweiterung“ gekennzeichnet.
 - **Keine Orderausführung**, keine Broker-Zugänge, keine Seed-Phrasen.
+- **Splits:** Rohkurse werden beim Lesen (`getBars`) mit der Splitliste des Instruments bereinigt (manuelle Einträge vor Provider-Daten; gespeicherte Kurse bleiben unverändert). Heuristische Split-Warnungen entfallen nur, wenn die Liste als vollständig gilt (Provider-Abruf oder manuelle Bestätigung mit Quelle) **und** kein split-artiger Kurssprung innerhalb ±10 Tagen eines gemeldeten Splits übrig bleibt. Wochenkerzen mit Split in der Woche: Schluss exakt, Open/High/Low näherungsweise.
 - **Point-in-Time:** SEC-Werte behalten die zuerst eingereichte Fassung; Fibonacci/Pivots/Backtest nutzen nur Daten bis zum Entscheidungszeitpunkt.
 
 ## Datenfluss

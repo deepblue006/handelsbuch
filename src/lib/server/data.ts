@@ -7,6 +7,7 @@ import { prisma } from "../db";
 import { FxTable, type FxRate } from "../calc/fx";
 import type { Bar } from "../calc/indicators";
 import type { PPrice } from "../calc/portfolio";
+import { adjustForSplits, mergeSplits, type SplitEvent } from "../calc/splits";
 
 export const SNAPSHOT_PROVIDER = "alphavantage_snapshot";
 
@@ -18,11 +19,29 @@ export interface SeriesResult {
   isSnapshot: boolean;
   adjusted: boolean;
   currency: string | null;
+  split: SplitStatus;
 }
+
+export interface SplitStatus {
+  /** Angewendete Split-Ereignisse (nur bei unbereinigten Rohkursen). */
+  applied: SplitEvent[];
+  /** Splitliste laut Quelle vollständig und passend zur Kursreihe → keine heuristische Split-Warnung mehr nötig. */
+  verified: boolean;
+  verifiedSource: string | null;
+  approximateBars: string[];
+  /** Verbleibende split-artige Sprünge (bei verifizierter Liste: echte Kursbewegungen laut Quelle). */
+  residualJumps: { date: string; factor: number }[];
+  problems: string[];
+}
+
+/** Reihe gilt als split-sicher: vom Provider bereinigt oder mit vollständiger, passender Splitliste bereinigt. */
+export const splitSafe = (s: Pick<SeriesResult, "adjusted" | "split">) => s.adjusted || s.split.verified;
+
+const NO_SPLIT: SplitStatus = { applied: [], verified: false, verifiedSource: null, approximateBars: [], residualJumps: [], problems: [] };
 
 export async function getBars(instrumentId: string, interval: BarInterval): Promise<SeriesResult> {
   const providers = await prisma.priceBar.groupBy({ by: ["provider"], where: { instrumentId, interval }, _max: { date: true }, _count: true });
-  if (!providers.length) return { bars: [], provider: null, fetchedAt: null, isDemo: false, isSnapshot: false, adjusted: false, currency: null };
+  if (!providers.length) return { bars: [], provider: null, fetchedAt: null, isDemo: false, isSnapshot: false, adjusted: false, currency: null, split: NO_SPLIT };
   providers.sort((a, b) => (b._max.date?.getTime() ?? 0) - (a._max.date?.getTime() ?? 0) || b._count - a._count);
   // Längere Historie bevorzugen, wenn die jüngste Quelle zu kurz für die SMA200 ist und die längere höchstens 7 Tage älter ist
   let chosen = providers[0]!;
@@ -32,15 +51,38 @@ export async function getBars(instrumentId: string, interval: BarInterval): Prom
   }
   const provider = chosen.provider;
   const rows = await prisma.priceBar.findMany({ where: { instrumentId, interval, provider }, orderBy: { date: "asc" } });
+  const raw = rows.map((r) => ({ date: r.date.toISOString().slice(0, 10), open: r.open, high: r.high, low: r.low, close: r.close, volume: r.volume }));
+  const adjusted = rows.length > 0 && rows.every((r) => r.adjusted);
+  const { bars, split } = adjusted ? { bars: raw, split: NO_SPLIT } : await applySplits(instrumentId, raw, interval);
   return {
-    bars: rows.map((r) => ({ date: r.date.toISOString().slice(0, 10), open: r.open, high: r.high, low: r.low, close: r.close, volume: r.volume })),
+    bars,
     provider,
     fetchedAt: rows.reduce<Date | null>((m, r) => (!m || r.fetchedAt > m ? r.fetchedAt : m), null),
     isDemo: rows.some((r) => r.isDemo),
     isSnapshot: provider === SNAPSHOT_PROVIDER,
-    adjusted: rows.every((r) => r.adjusted),
+    adjusted,
     currency: rows[0]?.currency ?? null,
+    split,
   };
+}
+
+/** Splitliste eines Instruments: manuelle Einträge haben Vorrang vor Provider-Daten. */
+export async function splitEvents(instrumentId: string) {
+  const rows = await prisma.stockSplit.findMany({ where: { instrumentId }, orderBy: { effectiveDate: "asc" } });
+  const ordered = [...rows].sort((a, b) => (a.provider === "manuell" ? 0 : 1) - (b.provider === "manuell" ? 0 : 1));
+  return { rows, ...mergeSplits(ordered.map((r) => ({ date: r.effectiveDate.toISOString().slice(0, 10), factor: r.factor, source: r.provider === "manuell" ? `manuell: ${r.source}` : r.source }))) };
+}
+
+async function applySplits(instrumentId: string, bars: Bar[], interval: BarInterval): Promise<{ bars: Bar[]; split: SplitStatus }> {
+  const [inst, ev] = await Promise.all([prisma.instrument.findUnique({ where: { id: instrumentId }, select: { splitsCheckedAt: true, splitsCheckedSource: true } }), splitEvents(instrumentId)]);
+  if (!ev.splits.length && !inst?.splitsCheckedAt) return { bars, split: NO_SPLIT };
+  const r = adjustForSplits(bars, ev.splits, interval);
+  const problems = [
+    ...ev.conflicts.map((c) => `Widersprüchliche Split-Angaben ${c}`),
+    ...r.mismatches.map((m) => `Kurssprung ${m.date} (Faktor ${m.factor}) nahe gemeldetem Split ${m.nearSplit} – Datum oder Faktor passt nicht zur Kursreihe`),
+  ];
+  const verified = !!inst?.splitsCheckedAt && problems.length === 0;
+  return { bars: r.bars, split: { applied: r.applied, verified, verifiedSource: verified ? inst!.splitsCheckedSource : null, approximateBars: r.approximateBars, residualJumps: r.residualJumps, problems } };
 }
 
 export interface PriceInfo extends PPrice {

@@ -63,12 +63,16 @@ model Instrument {
   isDemo        Boolean    @default(false)
   onWatchlist   Boolean    @default(false)
   inBreadthUniverse Boolean @default(false)
+  // Splitliste vollständig geprüft (Provider-Abruf oder manuelle Bestätigung mit Quelle)
+  splitsCheckedAt     DateTime?
+  splitsCheckedSource String?
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
   transactions  Transaction[]
   meta          PositionMeta?
   priceBars     PriceBar[]
+  splits        StockSplit[]
   quotes        Quote[]
   fundamentals  Fundamental[]
   earnings      EarningsEvent[]
@@ -224,6 +228,20 @@ model PriceBar {
 
   @@unique([instrumentId, interval, date, provider])
   @@index([instrumentId, interval, date])
+}
+
+/// Split-Ereignisse zur Bereinigung von Rohkursreihen. factor = neue Stücke je altem Stück.
+model StockSplit {
+  id            String     @id @default(cuid())
+  instrumentId  String
+  instrument    Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+  effectiveDate DateTime   @db.Date
+  factor        Float
+  provider      String // "alphavantage" | "manuell" | "alphavantage_snapshot"
+  source        String // Quellenangabe (bei manueller Erfassung Pflicht)
+  fetchedAt     DateTime   @default(now())
+
+  @@unique([instrumentId, effectiveDate, provider])
 }
 
 model Quote {

@@ -289,6 +289,10 @@ export class AlphaVantageClient {
     const { json } = await this.get({ function: "EARNINGS_ESTIMATES", symbol });
     return parseEarningsEstimates(json);
   }
+  async splits(symbol: string) {
+    const { json } = await this.get({ function: "SPLITS", symbol });
+    return parseSplits(json);
+  }
   async insider(symbol: string, fromDate?: string) {
     const { json } = await this.get({ function: "INSIDER_TRANSACTIONS", symbol, ...(fromDate ? { from_date: fromDate } : {}) });
     return parseInsiderTransactions(json);
@@ -332,6 +336,30 @@ export interface EpsEstimate {
   revisionsUp30d: number | null;
   revisionsDown30d: number | null;
   revenue: number | null;
+}
+
+// ---------- Splits ----------
+
+/**
+ * SPLITS: {"symbol":"IBM","data":[{"effective_date":"1999-05-27","split_factor":"2.0000"}]}.
+ * Format laut Dokumentation; Live-Antwort in dieser Umgebung noch nicht geprüft (Tageslimit erschöpft).
+ * split_factor = neue Stücke je altem Stück. Leere Liste = laut Quelle keine Splits.
+ */
+export function parseSplits(json: unknown): { splits: { date: string; factor: number }[]; invalid: number } {
+  const err = detectAvError(json);
+  if (err) throw err;
+  const arr = (json as { data?: unknown }).data;
+  if (!Array.isArray(arr)) throw new ProviderError("Feld 'data' fehlt", "FORMAT");
+  let invalid = 0;
+  const splits = arr.flatMap((e) => {
+    const r = e as { effective_date?: unknown; split_factor?: unknown };
+    const date = typeof r.effective_date === "string" ? r.effective_date : "";
+    const factor = num(r.split_factor);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || factor == null || !(factor > 0) || factor === 1 || factor > 1000 || factor < 0.001) { invalid++; return []; }
+    return [{ date, factor }];
+  });
+  splits.sort((a, b) => (a.date < b.date ? -1 : 1));
+  return { splits, invalid };
 }
 
 export function parseEarningsEstimates(json: unknown): EpsEstimate[] {

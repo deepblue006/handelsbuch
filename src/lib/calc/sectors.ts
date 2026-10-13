@@ -3,7 +3,7 @@
  */
 import { detectPossibleSplits, type Bar } from "./indicators";
 
-export interface SectorInput { symbol: string; label: string; bars: Bar[] }
+export interface SectorInput { symbol: string; label: string; bars: Bar[]; splitSafe?: boolean }
 
 export interface SectorRow {
   symbol: string;
@@ -16,24 +16,24 @@ export interface SectorRow {
 }
 
 /** Rendite über die letzten n Wochen; null bei zu kurzer Historie, unterschiedlichem Enddatum oder Split im Fenster. */
-function windowReturn(bars: Bar[], n: number, endDate: string) {
+function windowReturn(bars: Bar[], n: number, endDate: string, safe = false) {
   const idx = bars.findIndex((b) => b.date === endDate);
   if (idx < n) return { r: null, split: false };
   const slice = bars.slice(idx - n, idx + 1);
-  const split = detectPossibleSplits(slice).length > 0;
+  const split = !safe && detectPossibleSplits(slice).length > 0;
   if (split) return { r: null, split: true };
   return { r: ((slice.at(-1)!.close - slice[0]!.close) / slice[0]!.close) * 100, split: false };
 }
 
-export function sectorRotation(sectors: SectorInput[], benchmark: Bar[], windows = [4, 13, 26, 52]): { rows: SectorRow[]; endDate: string | null; method: string } {
+export function sectorRotation(sectors: SectorInput[], benchmark: Bar[], windows = [4, 13, 26, 52], benchmarkSafe = false): { rows: SectorRow[]; endDate: string | null; method: string } {
   const endDate = benchmark.at(-1)?.date ?? null;
-  const method = `Wochenschlusskurse bis ${endDate ?? "–"}; Rendite über 4/13/26/52 Wochen; relativ = Sektor − Benchmark (Prozentpunkte). Werte mit möglichem Split im Fenster werden ausgelassen (Rohkurse).`;
+  const method = `Wochenschlusskurse bis ${endDate ?? "–"}; Rendite über 4/13/26/52 Wochen; relativ = Sektor − Benchmark (Prozentpunkte). Rohkurse werden mit bekannten Splits bereinigt; ohne geprüfte Splitliste werden Werte mit möglichem Split im Fenster ausgelassen.`;
   if (!endDate) return { rows: [], endDate, method };
   const rows = sectors.map((s) => {
     const returns: Record<number, number | null> = {}, relative: Record<number, number | null> = {}, splitInWindow: Record<number, boolean> = {};
     for (const w of windows) {
-      const own = windowReturn(s.bars, w, endDate);
-      const bm = windowReturn(benchmark, w, endDate);
+      const own = windowReturn(s.bars, w, endDate, s.splitSafe);
+      const bm = windowReturn(benchmark, w, endDate, benchmarkSafe);
       returns[w] = own.r;
       splitInWindow[w] = own.split;
       relative[w] = own.r != null && bm.r != null ? own.r - bm.r : null;
@@ -51,7 +51,7 @@ export interface MonthStat { month: number; n: number; avgPct: number | null; me
  * Monatsrenditen aus dem letzten Wochenschluss je Kalendermonat (Näherung an Monatsultimo).
  * Nur vollständige Monate; laufender Monat ausgeschlossen. Mögliche Splits im Monat → Monat ausgelassen.
  */
-export function seasonality(bars: Bar[], today: string, minYears = 10): { stats: MonthStat[]; years: number; from: string | null; to: string | null; sufficient: boolean } {
+export function seasonality(bars: Bar[], today: string, minYears = 10, splitSafe = false): { stats: MonthStat[]; years: number; from: string | null; to: string | null; sufficient: boolean } {
   const lastOfMonth = new Map<string, Bar>();
   for (const b of bars) lastOfMonth.set(b.date.slice(0, 7), b);
   const months = [...lastOfMonth.keys()].sort().filter((m) => m < today.slice(0, 7));
@@ -59,7 +59,7 @@ export function seasonality(bars: Bar[], today: string, minYears = 10): { stats:
   for (let i = 1; i < months.length; i++) {
     const a = lastOfMonth.get(months[i - 1]!)!, b = lastOfMonth.get(months[i]!)!;
     const within = bars.filter((x) => x.date > a.date && x.date <= b.date);
-    if (detectPossibleSplits([a, ...within]).length) continue;
+    if (!splitSafe && detectPossibleSplits([a, ...within]).length) continue;
     rets.push({ month: Number(months[i]!.slice(5, 7)), r: ((b.close - a.close) / a.close) * 100 });
   }
   const stats: MonthStat[] = Array.from({ length: 12 }, (_, k) => {

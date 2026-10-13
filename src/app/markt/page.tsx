@@ -77,12 +77,14 @@ export default async function Markt() {
               {m.sectors.rows.slice().sort((a, b) => (b.relative[13] ?? -999) - (a.relative[13] ?? -999)).map((r) => (
                 <tr key={r.symbol}>
                   <td>{r.label} <span className="text-ink-3">({r.symbol})</span></td>
-                  {[4, 13, 26, 52].map((w) => <td key={w} className="num">{r.splitInWindow[w] ? <Badge tone="warn">Split?</Badge> : pct(r.returns[w])}</td>)}
+                  {[4, 13, 26, 52].map((w) => <td key={w} className="num">{r.splitInWindow[w] ? <a href={`/asset/${r.symbol}#splits`}><Badge tone="warn">Split?</Badge></a> : pct(r.returns[w])}</td>)}
                   {[13, 26].map((w) => <td key={w} className={"num " + ((r.relative[w] ?? 0) >= 0 ? "text-good" : "text-bad")}>{r.relative[w] != null ? `${r.relative[w]! > 0 ? "+" : ""}${num(r.relative[w], 1)} Pp.` : "–"}</td>)}
                   <td className="text-xs">{r.rsTrend === "VERBESSERT" ? "▲ verbessert" : r.rsTrend === "VERSCHLECHTERT" ? "▼ verschlechtert" : r.rsTrend === "UNVERÄNDERT" ? "→ unverändert" : "–"}</td>
                 </tr>
               ))}
             </Table>
+            {m.sectors.splitNotes.length > 0 && <p className="mt-2 text-[11px] text-ink-3">Split-Bereinigung: {m.sectors.splitNotes.join(" · ")}</p>}
+            {m.sectors.rows.some((r) => Object.values(r.splitInWindow).some(Boolean)) && <p className="mt-1 text-[11px] text-warn">„Split?“: Kurssprung wie bei einem Split, aber keine geprüfte Splitliste. Auf der Detailseite des ETFs Splits erfassen oder per Alpha Vantage (SPLITS) abrufen.</p>}
             <p className="mt-2 text-[11px] text-ink-3">{m.sectors.method} Echte Kapitalzu-/abflüsse in Sektor-ETFs sind nicht angebunden – Kursstärke ist kein Flussmaß.</p>
             <SourceLine provider={m.sectors.provider} dataDate={m.sectors.endDate} fetchedAt={m.sectors.fetchedAt} />
           </Card>

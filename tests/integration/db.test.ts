@@ -66,4 +66,33 @@ d("Datenbank-Integration", () => {
     const replaced = await prisma.politicianTransaction.findFirstOrThrow({ where: { supersededById: v2[0]!.id } });
     expect(replaced.status).toBe("KORRIGIERT_ODER_ERSETZT");
   });
+
+  it("Splitliste des Providers ersetzt alte Einträge, markiert die Liste als geprüft und bereinigt getBars", async () => {
+    const data = await import("@/lib/server/data");
+    const inst = await ingest.ensureInstrument({ symbol: "AAPL", name: "Apple", assetType: "STOCK", currency: "USD" });
+    const s = av.parseTimeSeries(loadSnapshot("TIME_SERIES_WEEKLY_AAPL.json"), "WEEK", "USD", "2026-10-11");
+    await ingest.upsertBars(inst.id, s, "test", new Date("2026-10-11T14:22:00Z"));
+    const before = await data.getBars(inst.id, "WEEK");
+    expect(data.splitSafe(before)).toBe(false);
+    // Erster Abruf mit falschem Zusatzeintrag, zweiter (korrekter) Abruf muss ihn entfernen
+    await ingest.upsertSplits(inst.id, [{ date: "2010-01-04", factor: 3 }], "alphavantage", "Test 1", new Date());
+    const splits = [{ date: "2000-06-21", factor: 2 }, { date: "2005-02-28", factor: 2 }, { date: "2014-06-09", factor: 7 }, { date: "2020-08-31", factor: 4 }];
+    await ingest.upsertSplits(inst.id, splits, "alphavantage", "Test 2", new Date());
+    expect(await prisma.stockSplit.count({ where: { instrumentId: inst.id } })).toBe(4);
+    const after = await data.getBars(inst.id, "WEEK");
+    expect(after.split.verified).toBe(true);
+    expect(after.split.verifiedSource).toBe("Test 2");
+    expect(after.split.problems).toEqual([]);
+    expect(after.split.residualJumps.map((j) => j.date)).toEqual(["2000-09-29"]);
+    expect(data.splitSafe(after)).toBe(true);
+    // Letzter Kurs unverändert, Kurs vor 2020 durch 4 geteilt
+    expect(after.bars.at(-1)!.close).toBe(before.bars.at(-1)!.close);
+    const i = before.bars.findIndex((b) => b.date === "2020-08-28");
+    expect(after.bars[i]!.close).toBeCloseTo(before.bars[i]!.close / 4, 6);
+    // Falsches Datum → Widerspruch erkannt, Liste gilt nicht mehr als passend
+    await prisma.stockSplit.create({ data: { instrumentId: inst.id, effectiveDate: new Date("2020-08-24T00:00:00Z"), factor: 4, provider: "manuell", source: "Tippfehler" } });
+    const wrong = await data.getBars(inst.id, "WEEK");
+    expect(wrong.split.verified).toBe(false);
+    expect(wrong.split.problems.length).toBeGreaterThan(0);
+  });
 });

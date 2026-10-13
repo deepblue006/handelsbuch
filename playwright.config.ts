@@ -16,7 +16,8 @@ export default defineConfig({
     launchOptions: executablePath ? { executablePath } : {},
   },
   webServer: {
-    command: "npx next start -p 3200",
+    // Playwright startet den Server VOR globalSetup – daher hier zuerst (nicht destruktiv) migrieren
+    command: "npx prisma migrate deploy && npx next start -p 3200",
     url: "http://localhost:3200",
     reuseExistingServer: false,
     timeout: 120_000,

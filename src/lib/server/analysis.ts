@@ -11,7 +11,7 @@ import { scenarioFairValue, peg, fcfYieldPct, metricSuitability, type ScenarioAs
 import { evaluateRules } from "../rules/engine";
 import { buildComponents } from "../score/components";
 import { aggregateScore } from "../score/score";
-import { getBars, type SeriesResult } from "./data";
+import { getBars, splitEvents, splitSafe, type SeriesResult } from "./data";
 import { loadPortfolio } from "./portfolio";
 import { indexViews, breadthView, effectiveBreadth } from "./market";
 import { getRuleConfig, getScoreWeights, getGeneral, todayIso } from "../settings";
@@ -76,8 +76,21 @@ export async function analyzeAsset(symbol: string) {
   const pv = pivots(fibBase.slice(-260), daily.bars.length >= 30 ? 5 : 3);
   const zones = price != null ? zonesFromPivots(pv, price) : [];
   const crosses = findCrosses(dDates, ind.sma50, ind.sma200);
-  const splitsDaily = detectPossibleSplits(daily.bars);
-  const splitsWeekly = detectPossibleSplits(weeklyBars.slice(-200));
+  // Heuristische Split-Warnung nur, solange die Reihe nicht nachweislich split-sicher ist
+  const dailySafe = daily.bars.length === 0 || splitSafe(daily); // leere Reihe: nichts zu warnen
+  const weeklySafe = weeklyDb.bars.length ? splitSafe(weeklyDb) : dailySafe;
+  const splitsDaily = dailySafe ? [] : detectPossibleSplits(daily.bars);
+  const splitsWeekly = weeklySafe ? [] : detectPossibleSplits(weeklyBars.slice(-200));
+  const splitEv = await splitEvents(inst.id);
+  const splitInfo = {
+    applied: [...new Map([...daily.split.applied, ...weeklyDb.split.applied].map((x) => [x.date, x])).values()],
+    verified: dailySafe && weeklySafe && (daily.bars.length > 0 || weeklyDb.bars.length > 0),
+    checkedAt: inst.splitsCheckedAt, checkedSource: inst.splitsCheckedSource,
+    approximateBars: weeklyDb.split.approximateBars,
+    realJumps: dailySafe || weeklySafe ? [...(dailySafe ? daily.split.residualJumps : []), ...(weeklySafe && weeklyDb.bars.length ? weeklyDb.split.residualJumps : [])] : [],
+    problems: [...new Set([...daily.split.problems, ...weeklyDb.split.problems, ...splitEv.conflicts.map((c) => `Widersprüchliche Split-Angaben ${c}`)])],
+    events: splitEv.rows.map((r) => ({ id: r.id, date: r.effectiveDate.toISOString().slice(0, 10), factor: r.factor, provider: r.provider, source: r.source })),
+  };
   const inGoldenPocket = fib && price != null ? price >= fib.goldenPocket.from && price <= fib.goldenPocket.to : null;
 
   // Fundamentaldaten (SEC, Jahreswerte, Point-in-Time)
@@ -185,8 +198,8 @@ export async function analyzeAsset(symbol: string) {
   const weeklyChart = weeklyBars.slice(-260).map((b, i, arr) => { const k = weeklyBars.length - arr.length + i; return { date: b.date, close: b.close, sma30w: ind.sma30w[k] ?? null, sma200w: ind.sma200w[k] ?? null, rsi14w: rsiW[k] ?? null }; });
 
   const backtests = [
-    { label: `RSI 14 (Tage) < ${cfg.rsiOversold}, Haltedauer 20 Handelstage`, r: daily.bars.length >= 200 ? eventBacktest(daily.bars, below(ind.rsi14, cfg.rsiOversold), { holdBars: 20, adjusted: daily.adjusted }) : null, note: `${daily.bars.length} Tageskurse – mindestens 200 nötig` },
-    { label: `RSI 14 (Wochen) < ${cfg.rsiOversold}, Haltedauer 13 Wochen`, r: weeklyBars.length >= 100 ? eventBacktest(weeklyBars, below(ind.rsi14w, cfg.rsiOversold), { holdBars: 13, adjusted: weeklyDb.adjusted }) : null, note: `${weeklyBars.length} Wochenkurse – mindestens 100 nötig` },
+    { label: `RSI 14 (Tage) < ${cfg.rsiOversold}, Haltedauer 20 Handelstage`, r: daily.bars.length >= 200 ? eventBacktest(daily.bars, below(ind.rsi14, cfg.rsiOversold), { holdBars: 20, adjusted: dailySafe }) : null, note: `${daily.bars.length} Tageskurse – mindestens 200 nötig` },
+    { label: `RSI 14 (Wochen) < ${cfg.rsiOversold}, Haltedauer 13 Wochen`, r: weeklyBars.length >= 100 ? eventBacktest(weeklyBars, below(ind.rsi14w, cfg.rsiOversold), { holdBars: 13, adjusted: weeklySafe }) : null, note: `${weeklyBars.length} Wochenkurse – mindestens 100 nötig` },
   ];
 
   return {
@@ -200,7 +213,7 @@ export async function analyzeAsset(symbol: string) {
       adr: adr(daily.bars, 20), upDown: upDownVolume(daily.bars, 50), vol: annualizedVolatility(dc.slice(-253), inst.assetType === "CRYPTO" ? 365 : 252),
       volWeekly: annualizedVolatility(wc.slice(-53), 52),
     },
-    stage, fib, fibConfluence: fib ? confluence(fib.levels, sma200Last) : [], zones, roundLevels: price != null ? roundLevels(price) : [], crosses: crosses.slice(-5), splits: { daily: splitsDaily, weekly: splitsWeekly },
+    stage, fib, fibConfluence: fib ? confluence(fib.levels, sma200Last) : [], zones, roundLevels: price != null ? roundLevels(price) : [], crosses: crosses.slice(-5), splits: { daily: splitsDaily, weekly: splitsWeekly }, splitInfo,
     fundamentals: {
       revenue: rev.slice(0, 4), netIncome: ni.slice(0, 4), ocf: ocf[0] ?? null, capex: capex[0] ?? null, fcf, sbc: sbc[0] ?? null, shares: sh.slice(0, 3), buybacks: buy[0] ?? null,
       revGrowth, prevRevGrowth, dilution, marketCap, fcfYield: fcfYieldPct(fcf, marketCap), forwardPe, forwardPeSource, peg: pegR, growthForPeg,

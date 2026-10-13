@@ -11,7 +11,7 @@ import { FRED_SERIES, fredSeries, ecbEurUsd, coingeckoChart, secTickerMap, secCo
 import { fromAlphaVantage, parseHouseIndexXml, parsePtrText } from "../politics/normalize";
 import { extractPdfText } from "../politics/pdf";
 import { parseRss } from "../social/truthsocial";
-import { withFetchLog, countCallsToday, upsertBars, upsertMacro, upsertEarnings, ingestPoliticianTx, upsertEstimates, upsertInsider, upsertInstitutional } from "./ingest";
+import { withFetchLog, countCallsToday, upsertBars, upsertMacro, upsertEarnings, ingestPoliticianTx, upsertEstimates, upsertInsider, upsertInstitutional, upsertSplits } from "./ingest";
 import { todayIso } from "../settings";
 
 export async function isEnabled(providerId: string): Promise<boolean> {
@@ -96,6 +96,15 @@ export async function refreshAlphaVantage(): Promise<JobResult[]> {
       const r = await client.congressTrades(inst.symbol);
       const c = await ingestPoliticianTx(r.trades.map(fromAlphaVantage), fetchedAt(), today);
       return { received: r.trades.length + r.invalid, processed: c.INSERT + c.SUPERSEDE + c.DELETE_MARK + c.REVIEW + c.DUPLICATE };
+    });
+  }
+  // Splitlisten (niedrigste Priorität): nur für Rohkurs-Reihen, höchstens alle 30 Tage je Instrument (schont das Tageskontingent)
+  const splitDue = (d: Date | null) => !d || Date.now() - d.getTime() > 30 * 86400000;
+  for (const inst of instruments.filter((i) => i.assetType !== "CRYPTO" && splitDue(i.splitsCheckedAt) && !(i.splitsCheckedSource ?? "").startsWith("manuell"))) {
+    const sym = (inst.providerIds as Record<string, string>).alphavantage ?? inst.symbol;
+    await run(`splits:${inst.symbol}`, async () => {
+      const r = await client.splits(sym);
+      return { received: r.splits.length + r.invalid, processed: await upsertSplits(inst.id, r.splits, "alphavantage", `Alpha Vantage SPLITS (${today})`, fetchedAt()), note: r.invalid ? `${r.invalid} ungültige Einträge verworfen` : undefined };
     });
   }
   return out;
@@ -212,7 +221,7 @@ export async function refreshHouseClerk(year = Number(todayIso().slice(0, 4))): 
     const processed = await prisma.politicianFiling.count({ where: { source: "HOUSE_CLERK", year, transactions: { some: {} } } });
     await prisma.sourceCoverage.upsert({
       where: { provider_institution_docType: { provider: "house_clerk", institution: "US House Clerk", docType: "PTR" } },
-      create: { provider: "house_clerk", institution: "US House Clerk", docType: "PTR", periodsChecked: String(year), lastSuccessAt: new Date(), docsFound: ptr.length, docsProcessed: processed, docsPending: ptr.length - processed, knownGaps: "PDF-Transaktionen werden nicht automatisch extrahiert; Texteinfügen in der Prüfwarteschlange.", lastCompletedAt: new Date() },
+      create: { provider: "house_clerk", institution: "US House Clerk", docType: "PTR", periodsChecked: String(year), lastSuccessAt: new Date(), docsFound: ptr.length, docsProcessed: processed, docsPending: ptr.length - processed, knownGaps: "PTR-PDFs werden per Textextraktion ausgewertet; gescannte/handschriftliche PDFs und nicht eindeutige Zeilen landen in der Prüfwarteschlange.", lastCompletedAt: new Date() },
       update: { periodsChecked: String(year), lastSuccessAt: new Date(), docsFound: ptr.length, docsProcessed: processed, docsPending: ptr.length - processed, lastCompletedAt: new Date() },
     });
     return { received: entries.length, processed: ptr.length };

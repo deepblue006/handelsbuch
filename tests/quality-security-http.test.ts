@@ -32,6 +32,12 @@ describe("Schutz vertraulicher Daten", () => {
     expect(s).not.toContain("ZZZ");
     expect(redact("Fehler mit fredkey-987654 im Text", { FRED_API_KEY: "fredkey-987654" })).not.toContain("fredkey-987654");
   });
+  it("schwärzt Schlüssel, die ein Anbieter im Fließtext einer Limit-Meldung nennt", () => {
+    const msg = "Limit erreicht: We have detected your API key as ABCD1234XYZ and our standard API rate limit is 25 requests per day.";
+    const s = redact(msg, {});
+    expect(s).not.toContain("ABCD1234XYZ");
+    expect(s).toContain("standard API rate limit is 25 requests per day");
+  });
   it("Exporte enthalten keine Secret-Felder", () => {
     const out = stripSecretsForExport({ a: 1, apiKey: "x", nested: { password: "p", ok: true, list: [{ token: "t", v: 2 }] } });
     expect(out).toEqual({ a: 1, nested: { ok: true, list: [{ v: 2 }] } });

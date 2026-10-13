@@ -6,7 +6,8 @@ import { Card, PageHeader, Badge, DataBadge, Empty, Table, Field, Missing, DemoB
 import { LinesChart } from "@/components/charts";
 import { ActionForm } from "@/components/forms";
 import { ReverseValuation } from "@/components/reverse-valuation";
-import { saveValuation, saveMeta, addLevel, addThesisEvent, addAnalystAction, importPrices } from "@/app/actions";
+import { saveValuation, saveMeta, addLevel, addThesisEvent, addAnalystAction, importPrices, addSplit, deleteSplit, confirmSplitList } from "@/app/actions";
+import { formatSplitRatio } from "@/lib/calc/splits";
 import { COMPONENT_LABELS, STATE_LABELS } from "@/lib/score/score";
 import { money, num, pct, dateDe, dateTimeDe, compact, qty } from "@/lib/format";
 import { FORM4_CODES } from "@/lib/providers/alphavantage";
@@ -108,7 +109,7 @@ export default async function AssetPage({ params }: { params: Promise<{ symbol: 
               <LinesChart height={140} data={a.weeklyChart} domain={[0, 100]} refLines={[{ y: 70, label: "70" }, { y: 30, label: "30" }]} series={[{ key: "rsi14w", label: "RSI 14 (Wochen)", color: "var(--s1)" }]} />
             </>
           ) : <Empty>Keine Kursreihe vorhanden.</Empty>}
-          <p className="mt-2 text-[11px] text-ink-3">Tageskurse: {a.dailyMeta.count} ({a.dailyMeta.provider ?? "–"}, bis {dateDe(a.dailyMeta.lastDate)}) · Wochenkurse: {a.weeklyMeta.count} ({a.weeklyMeta.source}{a.weeklyMeta.provider ? `, ${a.weeklyMeta.provider}` : ""}) · {a.dailyMeta.adjusted || a.weeklyMeta.adjusted ? "split-bereinigt" : "Rohkurse, nicht split-/dividendenbereinigt"}</p>
+          <p className="mt-2 text-[11px] text-ink-3">Tageskurse: {a.dailyMeta.count} ({a.dailyMeta.provider ?? "–"}, bis {dateDe(a.dailyMeta.lastDate)}) · Wochenkurse: {a.weeklyMeta.count} ({a.weeklyMeta.source}{a.weeklyMeta.provider ? `, ${a.weeklyMeta.provider}` : ""}) · {a.dailyMeta.adjusted || a.weeklyMeta.adjusted ? "vom Anbieter bereinigt" : a.splitInfo.verified ? `Rohkurse, mit geprüfter Splitliste bereinigt (${a.splitInfo.checkedSource ?? "–"}), nicht dividendenbereinigt` : a.splitInfo.applied.length ? `Rohkurse, ${a.splitInfo.applied.length} bekannte(r) Split(s) bereinigt, Liste nicht als vollständig bestätigt` : "Rohkurse, nicht split-/dividendenbereinigt"}</p>
           <details className="mt-2">
             <summary className="cursor-pointer text-xs text-accent">Kurshistorie aus CSV importieren (für SMA 200, RSI, Backtest)</summary>
             <ActionForm action={importPrices} submit="Importieren" className="mt-2 flex flex-wrap items-end gap-2 text-xs">
@@ -120,6 +121,35 @@ export default async function AssetPage({ params }: { params: Promise<{ symbol: 
             <p className="mt-1 text-[11px] text-ink-3">Spalten Datum/Date und Schluss/Close (optional Eröffnung, Hoch, Tief, Volumen, Adj Close). Nur selbst bezogene Daten verwenden, deren Nutzung dir erlaubt ist. Kurse der Heimatbörse in Handelswährung.</p>
           </details>
           {(a.splits.daily.length > 0 || a.splits.weekly.length > 0) && <p className="mt-1"><Badge tone="warn">Möglicher unbereinigter Split: {[...a.splits.daily, ...a.splits.weekly].map((s) => `${dateDe(s.date)} (Faktor ${num(s.factor, 2)})`).join(", ")} – Durchschnitte über diesen Zeitpunkt sind verfälscht</Badge></p>}
+          <details id="splits" className="mt-2" open={a.splits.daily.length + a.splits.weekly.length + a.splitInfo.problems.length + a.splitInfo.events.length > 0 || undefined}>
+            <summary className="cursor-pointer text-xs text-accent">Splits ({a.splitInfo.events.length} erfasst{a.splitInfo.verified ? ", Liste geprüft" : ""})</summary>
+            {a.splitInfo.problems.map((p) => <p key={p} className="mt-1 text-[11px] text-bad">■ {p}</p>)}
+            {a.splitInfo.events.length > 0 ? (
+              <Table head={["Wirksam ab", "Verhältnis", "Quelle", ""]}>
+                {a.splitInfo.events.map((e) => <tr key={e.id}><td>{dateDe(e.date)}</td><td className="num">{formatSplitRatio(e.factor)}</td><td className="text-xs">{e.provider === "manuell" ? `manuell: ${e.source}` : e.source}</td><td>{e.provider === "manuell" && <ActionForm action={deleteSplit} submit="Löschen" className="text-xs"><input type="hidden" name="id" value={e.id} /></ActionForm>}</td></tr>)}
+              </Table>
+            ) : <p className="mt-1 text-[11px] text-ink-3">Keine Splits erfasst.</p>}
+            {a.splitInfo.approximateBars.length > 0 && <p className="mt-1 text-[11px] text-ink-3">Wochenkerzen mit Split innerhalb der Woche ({a.splitInfo.approximateBars.map(dateDe).join(", ")}): Schluss exakt, Eröffnung/Hoch/Tief nur näherungsweise bereinigt.</p>}
+            {a.splitInfo.verified && a.splitInfo.realJumps.length > 0 && <p className="mt-1 text-[11px] text-ink-3">Split-ähnliche Kurssprünge ohne Split laut Quelle (echte Kursbewegung): {a.splitInfo.realJumps.map((j) => dateDe(j.date)).join(", ")}.</p>}
+            <ActionForm action={addSplit} submit="Split speichern" className="mt-2 grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
+              <input type="hidden" name="instrumentId" value={inst.id} />
+              <Field label="Wirksam ab (erster Handelstag nach Split)"><input type="date" name="date" /></Field>
+              <Field label="Verhältnis neu:alt"><input name="ratio" placeholder="4:1 oder 1:10" /></Field>
+              <div className="col-span-2"><Field label="Quelle (Pflicht)"><input name="source" placeholder="z. B. Emittenten-Mitteilung vom …" /></Field></div>
+            </ActionForm>
+            {a.splitInfo.checkedAt ? (
+              <ActionForm action={confirmSplitList} submit="Bestätigung widerrufen" className="mt-2 text-xs">
+                <input type="hidden" name="instrumentId" value={inst.id} /><input type="hidden" name="revoke" value="1" />
+                <p className="text-[11px] text-ink-3">Liste als vollständig bestätigt am {dateTimeDe(a.splitInfo.checkedAt)} ({a.splitInfo.checkedSource}).</p>
+              </ActionForm>
+            ) : (
+              <ActionForm action={confirmSplitList} submit="Liste als vollständig bestätigen" className="mt-2 flex flex-wrap items-end gap-2 text-xs">
+                <input type="hidden" name="instrumentId" value={inst.id} />
+                <Field label="Quelle der vollständigen Splithistorie"><input name="source" placeholder="z. B. Investor-Relations-Seite, abgerufen am …" className="w-72" /></Field>
+              </ActionForm>
+            )}
+            <p className="mt-1 text-[11px] text-ink-3">Bereinigt werden nur Rohkurse; Kurse vor dem Wirksamkeitsdatum werden durch den Faktor geteilt. Erst eine als vollständig bestätigte Liste (manuell oder per Alpha-Vantage-Abruf) schaltet die heuristische Split-Warnung ab – und nur, wenn kein Kurssprung nahe einem gemeldeten Split übrig bleibt.</p>
+          </details>
         </Card>
 
         <Card title="Trend & Indikatoren">

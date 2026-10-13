@@ -221,3 +221,21 @@ export async function upsertInstitutional(symbol: string, r: ReturnType<typeof p
   }
   return r.holdings.length;
 }
+
+/**
+ * Übernimmt die vollständige Splitliste eines Providers: ersetzt dessen bisherige Einträge
+ * und markiert die Liste als geprüft (leere Liste = laut Quelle keine Splits).
+ */
+export async function upsertSplits(instrumentId: string, splits: { date: string; factor: number }[], provider: string, sourceLabel: string, fetchedAt: Date) {
+  const dates = splits.map((s) => new Date(s.date + "T00:00:00Z"));
+  await prisma.$transaction([
+    prisma.stockSplit.deleteMany({ where: { instrumentId, provider, effectiveDate: { notIn: dates } } }),
+    ...splits.map((s, i) => prisma.stockSplit.upsert({
+      where: { instrumentId_effectiveDate_provider: { instrumentId, effectiveDate: dates[i]!, provider } },
+      create: { instrumentId, effectiveDate: dates[i]!, factor: s.factor, provider, source: sourceLabel, fetchedAt },
+      update: { factor: s.factor, source: sourceLabel, fetchedAt },
+    })),
+    prisma.instrument.update({ where: { id: instrumentId }, data: { splitsCheckedAt: fetchedAt, splitsCheckedSource: sourceLabel } }),
+  ]);
+  return splits.length;
+}

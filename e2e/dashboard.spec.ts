@@ -158,3 +158,29 @@ test("Marktlage: Sektorrotation sichtbar; externe Marktbreite löst Regel A aus"
   await expect(page.getByText(/Warnsignal: Index nahe Hoch/)).toBeVisible();
   await expect(page.getByText(/Marktbreite: extern: manuell: E2E-Test/)).toBeVisible();
 });
+
+test("Splits: manuelle Splitliste bereinigt Rohkurse und ersetzt die Split-Warnung (synthetische Angabe, nur Testdatenbank)", async ({ page }) => {
+  await page.goto("/markt");
+  const row = page.locator("tr", { hasText: "(XLK)" });
+  await expect(row.getByText("Split?")).toBeVisible();
+  await page.goto("/asset/XLK#splits");
+  const box = page.locator("#splits");
+  await expect(box.getByText(/Keine Splits erfasst/)).toBeVisible();
+  await box.locator('input[name="date"]').fill("2025-12-01");
+  await box.locator('input[name="ratio"]').fill("2:1");
+  await box.getByRole("textbox", { name: "Quelle (Pflicht)" }).fill("E2E-Test, synthetische Angabe");
+  await box.getByRole("button", { name: "Split speichern" }).click();
+  await expect(page.getByText(/Split 2:1 zum 2025-12-01 gespeichert/)).toBeVisible();
+  // Quelle der vollständigen Liste ist Pflicht
+  await box.getByRole("button", { name: "Liste als vollständig bestätigen" }).click();
+  await expect(page.getByText(/Quelle der vollständigen Splitliste angeben/)).toBeVisible();
+  await box.getByRole("textbox", { name: /Quelle der vollständigen/ }).fill("E2E-Test");
+  await box.getByRole("button", { name: "Liste als vollständig bestätigen" }).click();
+  await expect(page.getByText(/Splitliste als vollständig bestätigt/)).toBeVisible();
+  await page.reload();
+  await expect(page.getByText(/mit geprüfter Splitliste bereinigt \(manuell: E2E-Test\)/)).toBeVisible();
+  await expect(page.getByText(/Möglicher unbereinigter Split/)).toHaveCount(0);
+  await page.goto("/markt");
+  await expect(page.locator("tr", { hasText: "(XLK)" }).getByText("Split?")).toHaveCount(0);
+  await expect(page.getByText(/Split-Bereinigung: XLK: 2025-12-01 Faktor 2/)).toBeVisible();
+});

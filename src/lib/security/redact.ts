@@ -6,6 +6,8 @@ const SECRET_PARAM = /((?:[?&]|\b)(?:apikey|api_key|api-key|key|token|access_tok
 const BEARER = /(Bearer\s+)[A-Za-z0-9._\-~+/]+=*/g;
 const CONN_STRING = /(postgres(?:ql)?:\/\/[^:\s/]+:)[^@\s]+(@)/gi;
 const PATH_KEY = /(pro-api\.llama\.fi\/)[^/\s]+/gi;
+// Alpha Vantage nennt den Schlüssel im Klartext in Limit-Meldungen („detected your API key as XXXX“)
+const KEY_IN_PROSE = /(\bapi[\s_-]?key\s+(?:as|is|was|=)\s+)[A-Za-z0-9_\-]{4,}/gi;
 
 /** Liste der Umgebungsvariablen, deren Werte niemals ausgegeben werden dürfen. */
 export const SECRET_ENV_KEYS = [
@@ -25,7 +27,7 @@ export const SECRET_ENV_KEYS = [
 
 export function redact(input: unknown, env: Record<string, string | undefined> = process.env): string {
   let s = typeof input === "string" ? input : input instanceof Error ? `${input.name}: ${input.message}` : safeStringify(input);
-  s = s.replace(SECRET_PARAM, "$1***").replace(BEARER, "$1***").replace(CONN_STRING, "$1***$2").replace(PATH_KEY, "$1***");
+  s = s.replace(SECRET_PARAM, "$1***").replace(BEARER, "$1***").replace(CONN_STRING, "$1***$2").replace(PATH_KEY, "$1***").replace(KEY_IN_PROSE, "$1***");
   for (const k of SECRET_ENV_KEYS) {
     const v = env[k];
     if (v && v.length >= 6) s = s.split(v).join("***");

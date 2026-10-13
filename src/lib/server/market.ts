@@ -5,7 +5,7 @@ import { cache } from "react";
 import { prisma } from "../db";
 import { sma, weinsteinStage, distancePct, detectPossibleSplits } from "../calc/indicators";
 import { breadthAt, drawdownFromHigh, breadthSeries } from "../calc/breadth";
-import { getBars, macro, lastValid, valueAtOrBefore, type MacroResult } from "./data";
+import { getBars, splitSafe, macro, lastValid, valueAtOrBefore, type MacroResult } from "./data";
 import { upcomingFomc } from "../fomc";
 import { sectorRotation, seasonality } from "../calc/sectors";
 import { getRuleConfig, getGeneral, todayIso } from "../settings";
@@ -63,7 +63,7 @@ export const indexViews = cache(async (): Promise<IndexView[]> => {
       fetchedAt: w.fetchedAt ?? d.fetchedAt, lastDate: latest?.date ?? null, last: latest?.close ?? null, currency: w.currency ?? d.currency,
       sma200d: s200, dailyBars: dc.length, ma40w: ma40.at(-1) ?? null, ma30w: ma30.at(-1) ?? null,
       stage: wc.length ? weinsteinStage(wc) : null, drawdownPct: dd?.drawdownPct ?? null, highDate: dd?.highDate ?? null,
-      splitWarnings: detectPossibleSplits(w.bars.slice(-60)),
+      splitWarnings: splitSafe(w) ? [] : detectPossibleSplits(w.bars.slice(-60)),
       weekly: w.bars.slice(-156).map((b, i, arr) => { const idx = w.bars.length - arr.length + i; return { date: b.date, close: b.close, ma30: ma30[idx] ?? null, ma40: ma40[idx] ?? null }; }),
     });
   }
@@ -150,14 +150,17 @@ export async function sectorView(today: string) {
   const bm = await getBars(spy.id, "WEEK");
   const inputs = [];
   let provider: string | null = null, fetchedAt: Date | null = null;
+  const splitNotes: string[] = [];
   for (const e of etfs) {
     const w = await getBars(e.id, "WEEK");
     provider = provider ?? w.provider;
     if (w.fetchedAt && (!fetchedAt || w.fetchedAt > fetchedAt)) fetchedAt = w.fetchedAt;
-    inputs.push({ symbol: e.symbol, label: e.sector ?? e.symbol, bars: w.bars });
+    inputs.push({ symbol: e.symbol, label: e.sector ?? e.symbol, bars: w.bars, splitSafe: splitSafe(w) });
+    for (const a of w.split.applied) splitNotes.push(`${e.symbol}: ${a.date} Faktor ${a.factor} (${a.source})`);
+    for (const p of w.split.problems) splitNotes.push(`${e.symbol}: ${p}`);
   }
-  const rot = sectorRotation(inputs, bm.bars);
-  return { ...rot, provider, fetchedAt, isSnapshot: bm.isSnapshot, seasonality: seasonality(bm.bars, today) };
+  const rot = sectorRotation(inputs, bm.bars, undefined, splitSafe(bm));
+  return { ...rot, provider, fetchedAt, isSnapshot: bm.isSnapshot, splitNotes, seasonality: seasonality(bm.bars, today, undefined, splitSafe(bm)) };
 }
 
 export async function marketOverview() {

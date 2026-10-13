@@ -19,6 +19,7 @@ import { extractPdfText } from "@/lib/politics/pdf";
 import { parsePriceCsv } from "@/lib/portfolio/price-import";
 import { upsertBars } from "@/lib/server/ingest";
 import { PROVIDERS } from "@/lib/providers/registry";
+import { parseSplitRatio, formatSplitRatio } from "@/lib/calc/splits";
 
 export type ActionState = { ok: boolean; message: string; preview?: ImportPreview | null } | null;
 
@@ -400,5 +401,54 @@ export async function saveExternalBreadth(_: ActionState, f: FormData): Promise<
     await prisma.macroObservation.upsert({ where: { seriesKey_date_provider: { seriesKey: "BREADTH_EXTERNAL", date: new Date(date + "T00:00:00Z"), provider } }, create: { seriesKey: "BREADTH_EXTERNAL", date: new Date(date + "T00:00:00Z"), value: v, provider, fetchedAt: new Date() }, update: { value: v, fetchedAt: new Date() } });
     revalidatePath("/", "layout");
     return { ok: true, message: `Externe Marktbreite ${v} % (${date}, ${source}) gespeichert – genutzt, solange ≤ 7 Tage alt und das eigene Universum nicht repräsentativ ist.` };
+  } catch (e) { return fail(e); }
+}
+
+// ---------- Splits ----------
+
+export async function addSplit(_: ActionState, f: FormData): Promise<ActionState> {
+  try {
+    const instrumentId = z.string().min(1).parse(str(f, "instrumentId"));
+    const date = parseDateFlexible(str(f, "date"));
+    const factor = parseSplitRatio(str(f, "ratio"));
+    const source = z.string().trim().min(3, "Quelle angeben (z. B. Emittenten-Mitteilung mit Datum)").max(160).parse(str(f, "source"));
+    if (!date) throw new Error("Wirksamkeitsdatum fehlt oder ist ungültig");
+    if (factor == null) throw new Error("Verhältnis als „neu:alt“ angeben, z. B. 4:1 oder 1:10");
+    const effectiveDate = new Date(date + "T00:00:00Z");
+    await prisma.stockSplit.upsert({
+      where: { instrumentId_effectiveDate_provider: { instrumentId, effectiveDate, provider: "manuell" } },
+      create: { instrumentId, effectiveDate, factor, provider: "manuell", source },
+      update: { factor, source, fetchedAt: new Date() },
+    });
+    revalidatePath("/", "layout");
+    return { ok: true, message: `Split ${formatSplitRatio(factor)} zum ${date} gespeichert (${source}). Kurse davor werden ab sofort bereinigt.` };
+  } catch (e) { return fail(e); }
+}
+
+export async function deleteSplit(_: ActionState, f: FormData): Promise<ActionState> {
+  try {
+    const id = z.string().min(1).parse(str(f, "id"));
+    const row = await prisma.stockSplit.findUnique({ where: { id } });
+    if (!row) throw new Error("Eintrag nicht gefunden");
+    if (row.provider !== "manuell") throw new Error("Nur manuelle Einträge können gelöscht werden; Provider-Daten werden beim nächsten Abruf überschrieben.");
+    await prisma.stockSplit.delete({ where: { id } });
+    revalidatePath("/", "layout");
+    return { ok: true, message: "Split-Eintrag gelöscht." };
+  } catch (e) { return fail(e); }
+}
+
+/** Bestätigt (oder widerruft), dass die Splitliste laut genannter Quelle vollständig ist. */
+export async function confirmSplitList(_: ActionState, f: FormData): Promise<ActionState> {
+  try {
+    const instrumentId = z.string().min(1).parse(str(f, "instrumentId"));
+    if (str(f, "revoke") === "1") {
+      await prisma.instrument.update({ where: { id: instrumentId }, data: { splitsCheckedAt: null, splitsCheckedSource: null } });
+      revalidatePath("/", "layout");
+      return { ok: true, message: "Bestätigung widerrufen – heuristische Split-Warnungen sind wieder aktiv." };
+    }
+    const source = z.string().trim().min(3, "Quelle der vollständigen Splitliste angeben").max(160).parse(str(f, "source"));
+    await prisma.instrument.update({ where: { id: instrumentId }, data: { splitsCheckedAt: new Date(), splitsCheckedSource: `manuell: ${source}` } });
+    revalidatePath("/", "layout");
+    return { ok: true, message: `Splitliste als vollständig bestätigt (${source}). Verbleibende Kurssprünge gelten als echte Kursbewegungen, solange sie nicht nahe einem gemeldeten Split liegen.` };
   } catch (e) { return fail(e); }
 }
