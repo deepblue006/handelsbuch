@@ -5,10 +5,11 @@ PostgreSQL/Prisma, Zod, Vitest, Playwright). **Keine automatische Orderausführu
 Referenzregeln stammen aus der Nutzer-Zusammenstellung „Marktdaten, die Finanzwiesel nutzt“ (Stand 11.10.2026)
 und sind konfigurierbare Startparameter.
 
-- Installation & Betrieb: [docs/BETRIEB.md](docs/BETRIEB.md)
+- **Mac-Installation (Schritt für Schritt): [docs/INSTALLATION_MAC.md](docs/INSTALLATION_MAC.md)** – `./scripts/setup-mac.sh`, dann `./scripts/start-live.sh`
+- Installation & Betrieb allgemein: [docs/BETRIEB.md](docs/BETRIEB.md)
 - Datenquellen, Kosten, Bedingungen, Lücken: [docs/DATENQUELLEN.md](docs/DATENQUELLEN.md)
 - Architektur & Grundsätze: [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md)
-- Das bisherige Ein-Datei-Handelsbuch (`index.html`) bleibt unverändert nutzbar; seine Sicherung lässt sich importieren.
+- Das frühere Ein-Datei-Handelsbuch (`index.html`) wurde entfernt; eine Sicherungsdatei daraus lässt sich weiterhin unter Portfolio → „Bisheriges Handelsbuch übernehmen“ importieren.
 
 ## Modulstatus
 

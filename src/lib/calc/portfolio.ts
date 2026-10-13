@@ -1,5 +1,5 @@
 /**
- * Portfolio-Berechnung (FIFO) – übernimmt die Logik des bisherigen Handelsbuchs (index.html):
+ * Portfolio-Berechnung (FIFO) – übernimmt die Logik des früheren Handelsbuchs (ehemals index.html, entfernt):
  * Verkäufe werden nach FIFO gegen die ältesten Käufe gebucht; für Krypto wird je Kauf-Lot
  * die einjährige Haltefrist ausgewiesen (Hinweis, keine Steuerberatung).
  *

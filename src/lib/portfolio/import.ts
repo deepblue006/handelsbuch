@@ -1,6 +1,6 @@
 /**
  * CSV-Import von Transaktionen mit Vorschau und Zeilenvalidierung sowie Übernahme der
- * Sicherungsdatei des bisherigen Handelsbuchs (index.html, Format version 1).
+ * Sicherungsdatei des früheren Handelsbuchs (ehemals index.html, Format version 1).
  */
 import Papa from "papaparse";
 import { z } from "zod";

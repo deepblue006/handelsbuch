@@ -21,7 +21,6 @@ prisma/                Datenmodell + Migrationen (PostgreSQL)
 scripts/               refresh, scheduler, Snapshot-Import, Demo-Seed, Secret-Prüfung, Testdatenbank leeren
 tests/                 Vitest (Unit + Integration gegen _test-DB)   e2e/  Playwright
 data/snapshots/        echte Alpha-Vantage-Antworten vom 11.10.2026 (Testfixtures + optionaler Import)
-index.html             bisheriges Handelsbuch (unverändert, eigenständig nutzbar)
 ```
 
 ## Grundsätze
