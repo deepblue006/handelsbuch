@@ -474,19 +474,31 @@ const SPLIT_RATIOS = [2, 3, 4, 5, 7, 8, 10, 15, 20];
  * Erkennt mögliche, nicht bereinigte Aktiensplits in einer Rohkursreihe
  * (Sprung um ≈ Faktor 1/2, 1/3 … zwischen zwei aufeinanderfolgenden Kursen).
  * Ergebnis ist ein Warnhinweis, keine Gewissheit.
+ * Toleranz ohne Angabe: 4 % bei Tageskursen, 10 % bei Wochen-/Monatskursen (Median-Abstand ≥ 5 Tage) –
+ * dort steckt neben dem Split eine ganze Woche Kursbewegung im Sprung (z. B. XLU 12/2025: Faktor 2,09).
  */
-export function detectPossibleSplits(bars: Bar[], tolPct = 4): { date: string; factor: number }[] {
+export function detectPossibleSplits(bars: Bar[], tolPct?: number): { date: string; factor: number }[] {
+  const tol = tolPct ?? (medianGapDays(bars) >= 5 ? 10 : 4);
   const out: { date: string; factor: number }[] = [];
   for (let i = 1; i < bars.length; i++) {
     const prev = bars[i - 1]!.close, cur = bars[i]!.close;
     if (!(prev > 0) || !(cur > 0)) continue;
     const ratio = prev / cur;
     for (const f of SPLIT_RATIOS) {
-      if (Math.abs(ratio - f) / f * 100 <= tolPct) out.push({ date: bars[i]!.date, factor: f });
-      else if (Math.abs(1 / ratio - f) / f * 100 <= tolPct) out.push({ date: bars[i]!.date, factor: 1 / f });
+      if (Math.abs(ratio - f) / f * 100 <= tol) out.push({ date: bars[i]!.date, factor: f });
+      else if (Math.abs(1 / ratio - f) / f * 100 <= tol) out.push({ date: bars[i]!.date, factor: 1 / f });
     }
   }
   return out;
+}
+
+/** Median-Abstand in Tagen zwischen aufeinanderfolgenden Kursen (höchstens die ersten 20 Abstände). */
+function medianGapDays(bars: Bar[]): number {
+  const gaps: number[] = [];
+  for (let i = 1; i < bars.length && gaps.length < 20; i++) gaps.push((Date.parse(bars[i]!.date) - Date.parse(bars[i - 1]!.date)) / 86400000);
+  if (!gaps.length) return 1;
+  gaps.sort((a, b) => a - b);
+  return gaps[Math.floor(gaps.length / 2)]!;
 }
 
 /** Prüft, ob ausreichend Datenpunkte für einen Indikator vorliegen. */

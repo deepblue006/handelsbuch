@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { adjustForSplits, mergeSplits, parseSplitRatio, formatSplitRatio } from "@/lib/calc/splits";
 import { parseTimeSeries, parseSplits } from "@/lib/providers/alphavantage";
-import type { Bar } from "@/lib/calc/indicators";
+import { detectPossibleSplits, type Bar } from "@/lib/calc/indicators";
 
 const bar = (date: string, close: number, extra: Partial<Bar> = {}): Bar => ({ date, open: close, high: close, low: close, close, volume: 100, ...extra });
 
@@ -61,6 +61,19 @@ describe("Split-Bereinigung", () => {
     const r = adjustForSplits(s.bars, splits, "WEEK");
     expect(r.residualJumps.map((j) => j.date)).toEqual(["2000-09-29"]);
     expect(r.mismatches).toEqual([]);
+  });
+});
+
+describe("Split-Erkennung auf Wochenkursen (echte Daten)", () => {
+  it("XLU 12/2025: Sprung um Faktor 2,09 wird bei Wochenkursen als möglicher Split erkannt (vorher als −54 % Rendite durchgerutscht)", () => {
+    const s = parseTimeSeries(JSON.parse(readFileSync("data/snapshots/alphavantage/TIME_SERIES_WEEKLY_XLU.json", "utf8")), "WEEK", "USD");
+    expect(detectPossibleSplits(s.bars.slice(-60)).map((x) => x.date)).toContain("2025-12-05");
+    // explizite Tageskurs-Toleranz (4 %) würde ihn verfehlen
+    expect(detectPossibleSplits(s.bars.slice(-60), 4).map((x) => x.date)).not.toContain("2025-12-05");
+  });
+  it("normale Wochenbewegungen lösen keinen Split-Verdacht aus (SPY, 27 Jahre)", () => {
+    const s = parseTimeSeries(JSON.parse(readFileSync("data/snapshots/alphavantage/TIME_SERIES_WEEKLY_SPY.json", "utf8")), "WEEK", "USD");
+    expect(detectPossibleSplits(s.bars)).toEqual([]);
   });
 });
 

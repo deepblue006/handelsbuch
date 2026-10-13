@@ -11,3 +11,4 @@ next-env.d.ts
 .env.*.local
 data/cache/
 data/uploads/
+docs/screenshots/
