@@ -16,6 +16,8 @@ import { parseWideFlowTable } from "@/lib/flows/flows";
 import { upsertFlows, ingestPoliticianTx } from "@/lib/server/ingest";
 import { parsePtrText } from "@/lib/politics/normalize";
 import { extractPdfText } from "@/lib/politics/pdf";
+import { parsePriceCsv } from "@/lib/portfolio/price-import";
+import { upsertBars } from "@/lib/server/ingest";
 import { PROVIDERS } from "@/lib/providers/registry";
 
 export type ActionState = { ok: boolean; message: string; preview?: ImportPreview | null } | null;
@@ -361,4 +363,28 @@ export async function createManualFiling(_: ActionState, f: FormData): Promise<A
     revalidatePath("/politiker");
     return { ok: true, message: "Meldung angelegt – jetzt PDF hochladen oder Text einfügen." };
   } catch (e) { return fail(e); }
+}
+
+export async function importPrices(_: ActionState, f: FormData): Promise<ActionState> {
+  try {
+    const inst = await prisma.instrument.findUniqueOrThrow({ where: { id: str(f, "instrumentId") } });
+    const file = f.get("csv");
+    if (!(file instanceof File) || file.size === 0) throw new Error("Keine CSV-Datei gewählt");
+    if (file.size > 10_000_000) throw new Error("Datei zu groß (max. 10 MB)");
+    const currency = z.string().regex(/^[A-Z]{3}$/).parse(str(f, "currency").toUpperCase() || inst.currency);
+    if (currency !== inst.currency) throw new Error(`Kurse müssen in der Handelswährung ${inst.currency} vorliegen (keine stille Umrechnung)`);
+    const r = parsePriceCsv(await file.text(), { useAdjusted: str(f, "adjusted") === "on", today: todayIso() });
+    if (!r.bars.length) throw new Error(`Keine gültigen Kurse (${r.invalid.length} ungültige Zeilen)`);
+    const safeName = file.name.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 60);
+    const n = await withFetchLogSafe(`csv:${safeName}`, inst.symbol, () => upsertBars(inst.id, { symbol: inst.symbol, currency, interval: "DAY", adjusted: r.usedAdjusted, lastRefreshed: r.bars.at(-1)!.date, timeZone: null, bars: r.bars, partialLastBar: false }, `csv:${safeName}`, new Date()));
+    revalidatePath("/", "layout");
+    return { ok: true, message: `${n} Tageskurse (${r.bars[0]!.date} bis ${r.bars.at(-1)!.date}) importiert${r.usedAdjusted ? ", bereinigt (Adj Close)" : ", unbereinigt"}; ${r.invalid.length} Zeilen verworfen${r.duplicates ? `, ${r.duplicates} doppelte Daten (letzter Wert gilt)` : ""}.` };
+  } catch (e) { return fail(e); }
+}
+
+async function withFetchLogSafe(provider: string, symbol: string, fn: () => Promise<number>) {
+  const startedAt = new Date();
+  const n = await fn();
+  await prisma.fetchLog.create({ data: { providerId: "manual", dataset: `${provider}:${symbol}`, startedAt, finishedAt: new Date(), status: "SUCCESS", recordsReceived: n, recordsProcessed: n } });
+  return n;
 }

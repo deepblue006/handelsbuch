@@ -24,7 +24,13 @@ export async function getBars(instrumentId: string, interval: BarInterval): Prom
   const providers = await prisma.priceBar.groupBy({ by: ["provider"], where: { instrumentId, interval }, _max: { date: true }, _count: true });
   if (!providers.length) return { bars: [], provider: null, fetchedAt: null, isDemo: false, isSnapshot: false, adjusted: false, currency: null };
   providers.sort((a, b) => (b._max.date?.getTime() ?? 0) - (a._max.date?.getTime() ?? 0) || b._count - a._count);
-  const provider = providers[0]!.provider;
+  // Längere Historie bevorzugen, wenn die jüngste Quelle zu kurz für die SMA200 ist und die längere höchstens 7 Tage älter ist
+  let chosen = providers[0]!;
+  if (interval === "DAY" && chosen._count < 200) {
+    const longer = providers.find((p) => p._count >= 200 && (chosen._max.date!.getTime() - (p._max.date?.getTime() ?? 0)) <= 7 * 86400000);
+    if (longer) chosen = longer;
+  }
+  const provider = chosen.provider;
   const rows = await prisma.priceBar.findMany({ where: { instrumentId, interval, provider }, orderBy: { date: "asc" } });
   return {
     bars: rows.map((r) => ({ date: r.date.toISOString().slice(0, 10), open: r.open, high: r.high, low: r.low, close: r.close, volume: r.volume })),

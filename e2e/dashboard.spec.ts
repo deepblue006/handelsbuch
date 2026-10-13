@@ -123,3 +123,21 @@ test("Politiker-Radar: manuelle Meldung anlegen und PTR-PDF auswerten", async ({
   await expect(row).toContainText("02.09.2026");
   await expect(row).toContainText("Abgleich mit Original-PDF erforderlich");
 });
+
+test("Kurs-CSV-Import macht SMA 200 und Tages-RSI berechenbar (synthetische Testdaten, nur Testdatenbank)", async ({ page }) => {
+  const rows = ["Date,Open,High,Low,Close,Volume"];
+  const d = new Date("2026-10-09T00:00:00Z");
+  const days: string[] = [];
+  while (days.length < 260) { if (d.getUTCDay() !== 0 && d.getUTCDay() !== 6) days.unshift(d.toISOString().slice(0, 10)); d.setUTCDate(d.getUTCDate() - 1); }
+  days.forEach((day, i) => { const c = 250 + i * 0.3 + Math.sin(i / 5) * 4; rows.push(`${day},${c.toFixed(2)},${(c + 2).toFixed(2)},${(c - 2).toFixed(2)},${c.toFixed(2)},1000000`); });
+  await page.goto("/asset/AAPL");
+  await expect(page.getByText(/braucht 200 Tageskurse/)).toBeVisible();
+  await page.getByText("Kurshistorie aus CSV importieren").click();
+  await page.locator('input[name="csv"]').setInputFiles({ name: "test-aapl.csv", mimeType: "text/csv", buffer: Buffer.from(rows.join("\n")) });
+  await page.getByRole("button", { name: "Importieren" }).click();
+  await expect(page.getByText(/260 Tageskurse \(.*\) importiert, unbereinigt/)).toBeVisible();
+  await page.reload();
+  await expect(page.getByText(/braucht 200 Tageskurse/)).toHaveCount(0);
+  await expect(page.getByText("Kurs & gleitende Durchschnitte (Tage)")).toBeVisible();
+  await expect(page.getByText(/Tageskurse: 260 \(csv:test-aapl\.csv/)).toBeVisible();
+});

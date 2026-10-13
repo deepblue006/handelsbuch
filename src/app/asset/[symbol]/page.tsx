@@ -6,7 +6,7 @@ import { Card, PageHeader, Badge, DataBadge, Empty, Table, Field, Missing, DemoB
 import { LinesChart } from "@/components/charts";
 import { ActionForm } from "@/components/forms";
 import { ReverseValuation } from "@/components/reverse-valuation";
-import { saveValuation, saveMeta, addLevel, addThesisEvent, addAnalystAction } from "@/app/actions";
+import { saveValuation, saveMeta, addLevel, addThesisEvent, addAnalystAction, importPrices } from "@/app/actions";
 import { COMPONENT_LABELS, STATE_LABELS } from "@/lib/score/score";
 import { money, num, pct, dateDe, dateTimeDe, compact, qty } from "@/lib/format";
 import { FORM4_CODES } from "@/lib/providers/alphavantage";
@@ -109,6 +109,16 @@ export default async function AssetPage({ params }: { params: Promise<{ symbol: 
             </>
           ) : <Empty>Keine Kursreihe vorhanden.</Empty>}
           <p className="mt-2 text-[11px] text-ink-3">Tageskurse: {a.dailyMeta.count} ({a.dailyMeta.provider ?? "–"}, bis {dateDe(a.dailyMeta.lastDate)}) · Wochenkurse: {a.weeklyMeta.count} ({a.weeklyMeta.source}{a.weeklyMeta.provider ? `, ${a.weeklyMeta.provider}` : ""}) · {a.dailyMeta.adjusted || a.weeklyMeta.adjusted ? "split-bereinigt" : "Rohkurse, nicht split-/dividendenbereinigt"}</p>
+          <details className="mt-2">
+            <summary className="cursor-pointer text-xs text-accent">Kurshistorie aus CSV importieren (für SMA 200, RSI, Backtest)</summary>
+            <ActionForm action={importPrices} submit="Importieren" className="mt-2 flex flex-wrap items-end gap-2 text-xs">
+              <input type="hidden" name="instrumentId" value={inst.id} />
+              <input type="file" name="csv" accept=".csv,text/csv" aria-label="Kurs-CSV" />
+              <Field label="Währung"><input name="currency" defaultValue={cur} className="w-16" /></Field>
+              <label className="flex items-center gap-1"><input type="checkbox" name="adjusted" /> bereinigten Schluss (Adj Close) verwenden</label>
+            </ActionForm>
+            <p className="mt-1 text-[11px] text-ink-3">Spalten Datum/Date und Schluss/Close (optional Eröffnung, Hoch, Tief, Volumen, Adj Close). Nur selbst bezogene Daten verwenden, deren Nutzung dir erlaubt ist. Kurse der Heimatbörse in Handelswährung.</p>
+          </details>
           {(a.splits.daily.length > 0 || a.splits.weekly.length > 0) && <p className="mt-1"><Badge tone="warn">Möglicher unbereinigter Split: {[...a.splits.daily, ...a.splits.weekly].map((s) => `${dateDe(s.date)} (Faktor ${num(s.factor, 2)})`).join(", ")} – Durchschnitte über diesen Zeitpunkt sind verfälscht</Badge></p>}
         </Card>
 
