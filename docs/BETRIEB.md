@@ -42,3 +42,11 @@ Node-`fetch` nutzt `HTTPS_PROXY` nur mit `NODE_USE_ENV_PROXY=1`.
 
 ## Bekannte Grenzen
 Siehe Abschlussbericht im README.
+
+## Claude-Code-Cloud-Sitzungen
+`.claude/hooks/session-start.sh` (registriert in `.claude/settings.json`) läuft nur in Cloud-Sitzungen
+(`CLAUDE_CODE_REMOTE=true`): `npm install`, PostgreSQL starten (inkl. veralteter PID-Datei nach Neustart),
+Rolle `handelsbuch` und Datenbanken `handelsbuch`/`handelsbuch_test` anlegen, `prisma generate`,
+`prisma migrate deploy` (nicht destruktiv) für beide Datenbanken. Fehlt `.env`, wird sie mit einem zufälligen,
+nur lokal gültigen Passwort erzeugt. `TEST_DATABASE_URL`/`E2E_DATABASE_URL` zeigen in der Sitzung auf die
+`_test`-Datenbank, sodass Integrations- und E2E-Tests direkt laufen. Lokal tut der Hook nichts.
