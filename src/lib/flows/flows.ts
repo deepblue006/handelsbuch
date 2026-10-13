@@ -5,6 +5,7 @@
  * - Liefern mehrere Quellen denselben Fonds am selben Tag, wird nach Priorität EIN Wert gewählt;
  *   die Abweichung zwischen Quellen wird ausgewiesen (keine Doppelzählung).
  */
+import { isNyseTradingDay } from "../calc/us-holidays";
 
 export interface FlowRow {
   fundTicker: string;
@@ -137,7 +138,7 @@ export function aggregateFlows(rows: FlowRow[], by: "assetClass" | "fundTicker",
   };
 }
 
-/** Lücken: Werktage ohne Daten zwischen erstem und letztem Datum (Feiertage werden nicht erkannt). */
+/** Lücken: NYSE-Handelstage ohne Daten zwischen erstem und letztem Datum (regelbasierte US-Feiertage ausgenommen). */
 export function findGaps(dates: string[]): string[] {
   if (dates.length < 2) return [];
   const set = new Set(dates);
@@ -148,8 +149,7 @@ export function findGaps(dates: string[]): string[] {
   while (d < end) {
     d.setUTCDate(d.getUTCDate() + 1);
     const iso = d.toISOString().slice(0, 10);
-    const wd = d.getUTCDay();
-    if (wd !== 0 && wd !== 6 && !set.has(iso)) gaps.push(iso);
+    if (isNyseTradingDay(iso) && !set.has(iso)) gaps.push(iso);
   }
   return gaps;
 }

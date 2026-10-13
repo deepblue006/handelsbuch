@@ -4,6 +4,7 @@
  * 13F-Bestände quartalsweise usw. Fällige Abrufe werden nach Priorität ins Restkontingent gelegt,
  * der Rest wird aufgeschoben (nicht als Störung gewertet).
  */
+import { isNyseTradingDay } from "../calc/us-holidays";
 
 export type AvJobKind = "daily" | "weekly" | "macro" | "crypto" | "earnings" | "estimates" | "congress" | "insider" | "institutional" | "splits";
 
@@ -25,18 +26,28 @@ const HOUR = 3600_000, DAY = 24 * HOUR;
 /** US-Handelsschluss 16:00 ET ≈ 21:00/22:00 UTC; 22:15 UTC liegt sicher danach (Sommer- und Winterzeit). */
 const US_CLOSE_UTC_MIN = 22 * 60 + 15;
 
-/** Letzter abgeschlossener US-Handelstag (Mo–Fr, ohne Feiertagskalender) als Zeitpunkt nach Handelsschluss. */
+const isoDay = (d: Date) => d.toISOString().slice(0, 10);
+
+/** Letzter abgeschlossener NYSE-Handelstag (Wochenenden und regelbasierte Feiertage ausgenommen) als Zeitpunkt nach Handelsschluss. */
 export function lastUsCloseCutoff(now: Date): Date {
   const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, US_CLOSE_UTC_MIN));
   if (d > now) d.setUTCDate(d.getUTCDate() - 1);
-  while (d.getUTCDay() === 0 || d.getUTCDay() === 6) d.setUTCDate(d.getUTCDate() - 1);
+  while (!isNyseTradingDay(isoDay(d))) d.setUTCDate(d.getUTCDate() - 1);
   return d;
 }
 
-/** Letzter Wochenschluss (Freitag nach Handelsschluss). */
+/** Letzter Wochenschluss: letzter Handelstag der jüngsten vollständig abgeschlossenen Handelswoche (Karfreitag → Donnerstag). */
 export function lastWeekCloseCutoff(now: Date): Date {
   const d = lastUsCloseCutoff(now);
-  while (d.getUTCDay() !== 5) d.setUTCDate(d.getUTCDate() - 1);
+  const rest = new Date(d);
+  // Folgen in derselben Woche (bis Freitag) noch Handelstage, ist die Woche nicht abgeschlossen
+  for (rest.setUTCDate(rest.getUTCDate() + 1); rest.getUTCDay() >= 1 && rest.getUTCDay() <= 5; rest.setUTCDate(rest.getUTCDate() + 1)) {
+    if (isNyseTradingDay(isoDay(rest))) {
+      d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7) - 1); // Sonntag davor
+      while (!isNyseTradingDay(isoDay(d))) d.setUTCDate(d.getUTCDate() - 1);
+      break;
+    }
+  }
   return d;
 }
 

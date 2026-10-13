@@ -42,6 +42,8 @@ describe("ETF-Flows", () => {
   it("Lücken an Werktagen, Korrelation rein beschreibend", () => {
     expect(findGaps(["2026-10-05", "2026-10-09"])).toEqual(["2026-10-06", "2026-10-07", "2026-10-08"]);
     expect(findGaps(["2026-10-09", "2026-10-12"])).toEqual([]);
+    // Thanksgiving 26.11.2026 ist kein fehlender Tag
+    expect(findGaps(["2026-11-25", "2026-11-27"])).toEqual([]);
     expect(correlation([1, 2, 3, 4], [2, 4, 6, 8])).toBeCloseTo(1, 10);
     expect(correlation([1, 1, 1], [1, 2, 3])).toBeNull();
   });

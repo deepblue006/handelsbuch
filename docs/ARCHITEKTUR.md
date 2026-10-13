@@ -42,4 +42,4 @@ Alpha Vantage (25/Tag) läuft über einen **Abrufplan** (`providers/av-plan.ts`)
 (Tageskurse/Makro/Kongress nach jedem US-Handelsschluss, Wochenkurse nach Freitagsschluss, Termine/Konsens/Insider wöchentlich,
 13F/Splits monatlich, Krypto nach 00:00 UTC). Fällige Abrufe werden nach Priorität ins Restkontingent gelegt; der Rest wird
 mit einem einzigen `SKIPPED`-Protokolleintrag aufgeschoben (zählt weder als Abruf noch als Erfolg). Der Plan ist unter
-Einstellungen → „Alpha Vantage – Abrufplan heute“ sichtbar. Grenzen: kein US-Feiertagskalender, Tagesgrenze UTC.
+Einstellungen → „Alpha Vantage – Abrufplan heute“ sichtbar. Handelstage nach regelbasiertem NYSE-Kalender (`calc/us-holidays.ts`, ohne außerplanmäßige Schließungen); Tagesgrenze UTC.

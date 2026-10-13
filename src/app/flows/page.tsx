@@ -48,7 +48,7 @@ export default async function Flows({ searchParams }: { searchParams: Promise<{ 
             <b>Kumuliert im Zeitraum</b> ({dateDe(agg.coverage.from)}–{dateDe(agg.coverage.to)}, {agg.coverage.days} Tage):
             <ul className="mt-1 text-xs">{Object.entries(agg.totals).map(([k, v]) => <li key={k}>{k}: {num(v, 1)} Mio. USD</li>)}</ul>
           </div>
-          {gaps.length > 0 && <p className="mt-2"><Badge tone="warn">{gaps.length} Werktage ohne Daten (Feiertage nicht erkannt)</Badge></p>}
+          {gaps.length > 0 && <p className="mt-2"><Badge tone="warn">{gaps.length} US-Handelstage ohne Daten (regelbasierte NYSE-Feiertage ausgenommen)</Badge></p>}
           {conflicts.length > 0 && <p className="mt-2"><Badge tone="warn">{conflicts.length} Werte mit abweichenden Quellen – priorisierte Quelle gezeigt</Badge></p>}
         </Card>
         <Card title={`Tägliche Nettoflüsse${cls ? ` – ${cls}` : ""}`} className="xl:col-span-2">

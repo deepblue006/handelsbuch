@@ -79,7 +79,7 @@ export default async function Einstellungen() {
             ) : <p className="mt-1 text-xs text-ink-3">Noch keine erfolgreichen Live-Abrufe (Snapshots zählen nicht).</p>}
           </div>
         </div>
-        <p className="mt-2 text-[11px] text-ink-3">Reihenfolge: Tageskurse (Bestand, Watchlist, Indizes) → Makro → Wochenkurse → Krypto → Termine → Konsens → Sektor-Wochenkurse → Kongress → Insider → 13F → Splits. Aufgeschobenes wird beim nächsten Lauf nachgeholt und nicht als Störung gewertet. Handelstage ohne US-Feiertagskalender; Tagesgrenze UTC (der Anbieter kann anders zählen).</p>
+        <p className="mt-2 text-[11px] text-ink-3">Reihenfolge: Tageskurse (Bestand, Watchlist, Indizes) → Makro → Wochenkurse → Krypto → Termine → Konsens → Sektor-Wochenkurse → Kongress → Insider → 13F → Splits. Aufgeschobenes wird beim nächsten Lauf nachgeholt und nicht als Störung gewertet. Handelstage nach regelbasiertem NYSE-Feiertagskalender (ohne außerplanmäßige Schließungen); Tagesgrenze UTC (der Anbieter kann anders zählen).</p>
       </Card>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-3">
