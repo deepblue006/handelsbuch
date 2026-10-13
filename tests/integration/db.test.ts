@@ -95,4 +95,20 @@ d("Datenbank-Integration", () => {
     expect(wrong.split.verified).toBe(false);
     expect(wrong.split.problems.length).toBeGreaterThan(0);
   });
+
+  it("Erschöpftes Alpha-Vantage-Kontingent: kein Abrufversuch, ein einziger Aufschub-Eintrag, kein falscher Erfolg", async () => {
+    const refresh = await import("@/lib/server/refresh");
+    await prisma.fetchLog.deleteMany({ where: { providerId: "alphavantage" } });
+    await prisma.providerState.deleteMany({ where: { providerId: "alphavantage" } });
+    // 25 heutige Abrufe (FAILED zählt als verbrauchter Abruf, aber nicht als Erfolg)
+    await prisma.fetchLog.createMany({ data: Array.from({ length: 25 }, (_, i) => ({ providerId: "alphavantage", dataset: `test:${i}`, startedAt: new Date(), finishedAt: new Date(), status: "FAILED" as const })) });
+    await ingest.ensureInstrument({ symbol: "MSFT", name: "Microsoft", assetType: "STOCK", currency: "USD", onWatchlist: true });
+    const out = await refresh.refreshAlphaVantage();
+    expect(out.map((o) => o.dataset)).toEqual(["kontingent"]);
+    const logs = await prisma.fetchLog.findMany({ where: { providerId: "alphavantage", dataset: { not: { startsWith: "test:" } } } });
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({ dataset: "kontingent", status: "SKIPPED" });
+    expect(logs[0]!.errorMessage).toContain("daily:MSFT");
+    expect((await prisma.providerState.findUnique({ where: { providerId: "alphavantage" } }))?.lastSuccessAt ?? null).toBeNull();
+  });
 });

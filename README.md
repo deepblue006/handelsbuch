@@ -39,5 +39,6 @@ und sind konfigurierbare Startparameter.
 | Kaufplan, Sparpläne, Tranchen, Rücksetzer-/KI-Stressszenario, Kaufsimulation | implementiert und getestet |
 | Buchung passt Liquidität optional an | implementiert und getestet (E2E) |
 | Backtest (ohne Look-ahead, Mindeststichprobe, Splitprüfung) | implementiert und getestet |
+| Alpha-Vantage-Abrufplan (Intervall je Datensatz, Priorität im 25er-Tageskontingent, Aufschub statt Fehlschlag, Anzeige in den Einstellungen) | implementiert und getestet (Unit, DB-Integration, E2E); Feiertage nicht berücksichtigt |
 | Split-Bereinigung von Rohkursen (Splitliste je Instrument: manuell mit Pflichtquelle oder Alpha Vantage `SPLITS`; Abgleich mit Kurssprüngen) | implementiert und getestet (u. a. echte AAPL-Wochenkurse mit den vier dokumentierten Splits); **`SPLITS`-Antwortformat live noch nicht geprüft** (Tageslimit am 13.10.2026 erschöpft) |
 | Datenstatus, Abrufprotokoll, Retry/Backoff, Ratenbegrenzung, Secret-Schwärzung, Basic Auth | implementiert und getestet |

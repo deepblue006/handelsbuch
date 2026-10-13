@@ -37,4 +37,9 @@ index.html             bisheriges Handelsbuch (unverändert, eigenständig nutzb
 ## Datenfluss
 Provider-Adapter (parsen + validieren mit Zod) → `server/ingest.ts` (Upsert, FetchLog, ProviderState) →
 `server/data.ts` (Lesen mit Priorität) → `server/analysis.ts`/`market.ts`/`portfolio.ts` → Seiten.
-Aktualisierung: `npm run refresh` (einmalig) oder `npm run scheduler` (Intervall); Tageskontingente werden über das Abrufprotokoll geprüft, bereits heute geladene Datensätze übersprungen.
+Aktualisierung: `npm run refresh` (einmalig) oder `npm run scheduler` (Intervall); Tageskontingente werden über das Abrufprotokoll geprüft.
+Alpha Vantage (25/Tag) läuft über einen **Abrufplan** (`providers/av-plan.ts`): Jeder Datensatz hat ein Intervall
+(Tageskurse/Makro/Kongress nach jedem US-Handelsschluss, Wochenkurse nach Freitagsschluss, Termine/Konsens/Insider wöchentlich,
+13F/Splits monatlich, Krypto nach 00:00 UTC). Fällige Abrufe werden nach Priorität ins Restkontingent gelegt; der Rest wird
+mit einem einzigen `SKIPPED`-Protokolleintrag aufgeschoben (zählt weder als Abruf noch als Erfolg). Der Plan ist unter
+Einstellungen → „Alpha Vantage – Abrufplan heute“ sichtbar. Grenzen: kein US-Feiertagskalender, Tagesgrenze UTC.

@@ -9,6 +9,8 @@ import { RefreshButton } from "@/components/refresh-button";
 import { saveSettingsAction, toggleProvider } from "@/app/actions";
 import { dateTimeDe } from "@/lib/format";
 import { DEFAULT_RULE_CONFIG } from "@/lib/rules/config";
+import { alphaVantagePlan } from "@/lib/server/refresh";
+import { CADENCE } from "@/lib/providers/av-plan";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +26,7 @@ const RULE_LABELS: Record<string, string> = {
 };
 
 export default async function Einstellungen() {
-  const [states, logs, rules, weights, general] = await Promise.all([prisma.providerState.findMany(), prisma.fetchLog.findMany({ orderBy: { startedAt: "desc" }, take: 60 }), getRuleConfig(), getScoreWeights(), getGeneral()]);
+  const [states, logs, rules, weights, general, av] = await Promise.all([prisma.providerState.findMany(), prisma.fetchLog.findMany({ orderBy: { startedAt: "desc" }, take: 60 }), getRuleConfig(), getScoreWeights(), getGeneral(), alphaVantagePlan()]);
   const st = new Map(states.map((s) => [s.providerId, s]));
   return (
     <div>
@@ -50,6 +52,34 @@ export default async function Einstellungen() {
             );
           })}
         </Table>
+      </Card>
+
+      <Card title="Alpha Vantage – Abrufplan heute" className="mt-4" id="av-plan">
+        <p className="text-xs">
+          Kontingent: <b>{av.used}</b> von {av.dailyLimit} Abrufen heute (UTC) verbraucht · fällig: <b>{av.plan.run.length + av.plan.deferred.length}</b> ·
+          passt ins Restkontingent: <b>{av.plan.run.length}</b> · aufgeschoben: <b className={av.plan.deferred.length ? "text-warn" : ""}>{av.plan.deferred.length}</b> · nicht fällig: {av.plan.notDue.length}
+        </p>
+        <div className="mt-2 grid gap-4 md:grid-cols-2">
+          <div>
+            <h3 className="text-xs font-semibold text-ink-2">Nächste Abrufe (Priorität)</h3>
+            {av.plan.run.length + av.plan.deferred.length ? (
+              <Table head={["Datensatz", "Intervall", "Status"]}>
+                {[...av.plan.run.map((j) => ({ j, ok: true })), ...av.plan.deferred.map((j) => ({ j, ok: false }))].map(({ j, ok }) => (
+                  <tr key={j.dataset}><td className="text-xs">{j.dataset}</td><td className="text-[11px] text-ink-3">{CADENCE[j.kind].label}</td><td>{ok ? <Badge tone="good">heute</Badge> : <Badge tone="warn">aufgeschoben</Badge>}</td></tr>
+                ))}
+              </Table>
+            ) : <p className="mt-1 text-xs text-ink-3">Nichts fällig.</p>}
+          </div>
+          <div>
+            <h3 className="text-xs font-semibold text-ink-2">Aktuell (nicht fällig)</h3>
+            {av.plan.notDue.length ? (
+              <Table head={["Datensatz", "Letzter Erfolg", "Wieder fällig ab"]}>
+                {av.plan.notDue.map((n) => <tr key={n.job.dataset}><td className="text-xs">{n.job.dataset}</td><td className="text-xs">{dateTimeDe(n.lastSuccess)}</td><td className="text-xs">{dateTimeDe(n.nextDue)}</td></tr>)}
+              </Table>
+            ) : <p className="mt-1 text-xs text-ink-3">Noch keine erfolgreichen Live-Abrufe (Snapshots zählen nicht).</p>}
+          </div>
+        </div>
+        <p className="mt-2 text-[11px] text-ink-3">Reihenfolge: Tageskurse (Bestand, Watchlist, Indizes) → Makro → Wochenkurse → Krypto → Termine → Konsens → Sektor-Wochenkurse → Kongress → Insider → 13F → Splits. Aufgeschobenes wird beim nächsten Lauf nachgeholt und nicht als Störung gewertet. Handelstage ohne US-Feiertagskalender; Tagesgrenze UTC (der Anbieter kann anders zählen).</p>
       </Card>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-3">

@@ -184,3 +184,13 @@ test("Splits: manuelle Splitliste bereinigt Rohkurse und ersetzt die Split-Warnu
   await expect(page.locator("tr", { hasText: "(XLK)" }).getByText("Split?")).toHaveCount(0);
   await expect(page.getByText(/Split-Bereinigung: XLK: 2025-12-01 Faktor 2/)).toBeVisible();
 });
+
+test("Einstellungen: Alpha-Vantage-Abrufplan zeigt Kontingent, Priorität und Aufgeschobenes", async ({ page }) => {
+  await page.goto("/einstellungen#av-plan");
+  const plan = page.locator("#av-plan");
+  await expect(plan.getByText(/von 25 Abrufen heute/)).toBeVisible();
+  // Mehr fällige Abrufe als Kontingent: Sektor-Wochenkurse werden aufgeschoben, Tageskurse zuerst
+  await expect(plan.locator("tr", { hasText: "weekly:XLK" }).getByText("aufgeschoben")).toBeVisible();
+  await expect(plan.locator("tr", { hasText: "daily:SPY" }).getByText("heute")).toBeVisible();
+  await expect(plan.getByText(/Noch keine erfolgreichen Live-Abrufe/)).toBeVisible();
+});

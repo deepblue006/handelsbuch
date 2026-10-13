@@ -24,7 +24,7 @@ export async function withFetchLog(providerId: string, dataset: string, fn: () =
     const r = await fn();
     const status = r.status ?? (r.processed < r.received ? "PARTIAL" : "SUCCESS");
     await prisma.fetchLog.create({ data: { providerId, dataset, startedAt, finishedAt: new Date(), status, recordsReceived: r.received, recordsProcessed: r.processed, errorMessage: r.note ? redact(r.note) : null } });
-    await prisma.providerState.upsert({ where: { providerId }, create: { providerId, lastSuccessAt: new Date() }, update: { lastSuccessAt: new Date() } });
+    if (status !== "SKIPPED") await prisma.providerState.upsert({ where: { providerId }, create: { providerId, lastSuccessAt: new Date() }, update: { lastSuccessAt: new Date() } });
     return { ok: true as const, ...r, status };
   } catch (e) {
     const pe = e instanceof ProviderError ? e : null;

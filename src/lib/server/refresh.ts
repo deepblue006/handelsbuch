@@ -6,12 +6,13 @@ import { unzipSync, strFromU8 } from "fflate";
 import { prisma } from "../db";
 import { PROVIDERS, configStatus } from "../providers/registry";
 import { AlphaVantageClient } from "../providers/alphavantage";
+import { buildJobs, planJobs, type AvInstrument, type AvJob } from "../providers/av-plan";
 import { RateLimiter, ProviderError, fetchWithRetry } from "../providers/http";
 import { FRED_SERIES, fredSeries, ecbEurUsd, coingeckoChart, secTickerMap, secCompanyFacts, kalshiFedMarkets } from "../providers/official";
 import { fromAlphaVantage, parseHouseIndexXml, parsePtrText } from "../politics/normalize";
 import { extractPdfText } from "../politics/pdf";
 import { parseRss } from "../social/truthsocial";
-import { withFetchLog, countCallsToday, upsertBars, upsertMacro, upsertEarnings, ingestPoliticianTx, upsertEstimates, upsertInsider, upsertInstitutional, upsertSplits } from "./ingest";
+import { withFetchLog, type FetchOutcome, countCallsToday, upsertBars, upsertMacro, upsertEarnings, ingestPoliticianTx, upsertEstimates, upsertInsider, upsertInstitutional, upsertSplits } from "./ingest";
 import { todayIso } from "../settings";
 
 export async function isEnabled(providerId: string): Promise<boolean> {
@@ -38,6 +39,29 @@ const MACRO_META: Record<string, { name: string; unit: string; frequency: string
   EURUSD: { name: "EUR/USD Tagesschluss", unit: "USD je EUR", frequency: "daily", originalSource: "Alpha Vantage FX_DAILY" },
 };
 
+/** Instrumente, für die Alpha Vantage abgefragt wird (ohne Demo). */
+async function avInstruments() {
+  return prisma.instrument.findMany({ where: { isDemo: false, OR: [{ onWatchlist: true }, { transactions: { some: {} } }, { assetType: "INDEX_PROXY" }, { inBreadthUniverse: true }, { industry: "SPDR-Sektor-ETF" }] }, include: { _count: { select: { transactions: true } } } });
+}
+
+/** Abrufplan für heute: fällige Datensätze nach Priorität, Restkontingent, Aufgeschobenes. */
+export async function alphaVantagePlan(now = new Date()) {
+  const dailyLimit = Number(process.env.ALPHAVANTAGE_DAILY_LIMIT ?? 25);
+  const [instruments, used, last] = await Promise.all([
+    avInstruments(),
+    countCallsToday("alphavantage"),
+    prisma.fetchLog.groupBy({ by: ["dataset"], where: { providerId: "alphavantage", status: { in: ["SUCCESS", "PARTIAL"] } }, _max: { startedAt: true } }),
+  ]);
+  const lastSuccess = new Map(last.filter((l) => l._max.startedAt).map((l) => [l.dataset, l._max.startedAt!]));
+  const descr: AvInstrument[] = instruments.map((i) => ({
+    symbol: i.symbol, assetType: i.assetType, held: i.onWatchlist || i._count.transactions > 0, isIndexProxy: i.assetType === "INDEX_PROXY",
+    isSectorEtf: i.industry === "SPDR-Sektor-ETF", inBreadthUniverse: i.inBreadthUniverse,
+    splitsManual: (i.splitsCheckedSource ?? "").startsWith("manuell"), splitsCheckedAt: i.splitsCheckedAt, hasCoinGecko: !!process.env.COINGECKO_API_KEY,
+  }));
+  const jobs = buildJobs(descr, now);
+  return { plan: planJobs(jobs, lastSuccess, now, dailyLimit - used), used, dailyLimit, instruments, totalJobs: jobs.length };
+}
+
 export async function refreshAlphaVantage(): Promise<JobResult[]> {
   const out: JobResult[] = [];
   if (!(await isEnabled("alphavantage"))) return out;
@@ -53,59 +77,45 @@ export async function refreshAlphaVantage(): Promise<JobResult[]> {
   }
   const today = todayIso();
   const fetchedAt = () => new Date();
-  const run = async (dataset: string, fn: () => Promise<{ received: number; processed: number }>) => {
-    if (await fetchedToday("alphavantage", dataset)) return;
-    const r = await withFetchLog("alphavantage", dataset, fn, 24 * 60);
-    out.push({ provider: "alphavantage", dataset, ok: r.ok, info: r.ok ? `${r.processed} Datensätze` : r.error });
-  };
-  // Reihenfolge = Priorität bei knappem Tageskontingent
-  const macroJobs: [string, () => ReturnType<AlphaVantageClient["treasury10y"]>][] = [
-    ["US10Y", () => client.treasury10y()], ["EFFR", () => client.fedFunds()], ["EURUSD", () => client.eurusd()],
-    ["WTI", () => client.wti()], ["BRENT", () => client.brent()], ["GOLD_USD", () => client.gold()],
-  ];
-  const instruments = await prisma.instrument.findMany({ where: { isDemo: false, OR: [{ onWatchlist: true }, { transactions: { some: {} } }, { assetType: "INDEX_PROXY" }, { inBreadthUniverse: true }, { industry: "SPDR-Sektor-ETF" }] } });
-  for (const inst of instruments.filter((i) => i.assetType !== "CRYPTO")) {
-    const sym = (inst.providerIds as Record<string, string>).alphavantage ?? inst.symbol;
-    if (inst.industry !== "SPDR-Sektor-ETF") await run(`daily:${inst.symbol}`, async () => { const s = await client.dailyCompact(sym, inst.currency, today); return { received: s.bars.length, processed: await upsertBars(inst.id, s, "alphavantage", fetchedAt()) }; });
-    await run(`weekly:${inst.symbol}`, async () => { const s = await client.weekly(sym, inst.currency, today); return { received: s.bars.length, processed: await upsertBars(inst.id, s, "alphavantage", fetchedAt(), { skipPartial: true }) }; });
-  }
-  for (const [k, fn] of macroJobs) {
-    await run(`macro:${k}`, async () => {
-      const d = await fn();
-      const m = MACRO_META[k]!;
-      return { received: d.points.length, processed: await upsertMacro({ key: k, ...m, provider: "alphavantage" }, d, fetchedAt()) };
-    });
-  }
-  for (const inst of instruments.filter((i) => i.assetType === "STOCK")) {
-    await run(`earnings:${inst.symbol}`, async () => { const e = await client.earnings(inst.symbol); return { received: e.length, processed: await upsertEarnings(inst.id, e, "alphavantage", fetchedAt()) }; });
-  }
-  for (const inst of instruments.filter((i) => i.assetType === "STOCK")) {
-    await run(`estimates:${inst.symbol}`, async () => { const e = await client.estimates(inst.symbol); return { received: e.length, processed: await upsertEstimates(inst.id, e, "alphavantage", fetchedAt()) }; });
-  }
-  for (const inst of instruments.filter((i) => i.assetType === "CRYPTO" && !process.env.COINGECKO_API_KEY)) {
-    await run(`crypto:${inst.symbol}`, async () => { const s = await client.cryptoDaily(inst.symbol, inst.currency, today); return { received: s.bars.length, processed: await upsertBars(inst.id, s, "alphavantage", fetchedAt(), { skipPartial: true }) }; });
-  }
+  const { plan, instruments } = await alphaVantagePlan();
+  const bySymbol = new Map(instruments.map((i) => [i.symbol, i]));
   const fromDate = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
-  for (const inst of instruments.filter((i) => i.assetType === "STOCK")) {
-    await run(`insider:${inst.symbol}`, async () => { const t = await client.insider(inst.symbol, fromDate); return { received: t.length, processed: await upsertInsider(inst.id, t, "alphavantage", fetchedAt()), note: "Alpha Vantage liefert kein Meldedatum (Form 4: i. d. R. binnen 2 Geschäftstagen)" }; });
-    await run(`institutional:${inst.symbol}`, async () => { const r = await client.institutional(inst.symbol); return { received: r.holdings.length, processed: await upsertInstitutional(inst.symbol, r, "alphavantage", fetchedAt()), note: r.mixedPeriods ? `Gemischte Meldestichtage: ${r.reportPeriods.join(", ")}` : undefined }; });
+  const macroJobs: Record<string, () => ReturnType<AlphaVantageClient["treasury10y"]>> = {
+    US10Y: () => client.treasury10y(), EFFR: () => client.fedFunds(), EURUSD: () => client.eurusd(),
+    WTI: () => client.wti(), BRENT: () => client.brent(), GOLD_USD: () => client.gold(),
+  };
+  const execute = (job: AvJob): (() => Promise<FetchOutcome>) => {
+    const inst = job.symbol ? bySymbol.get(job.symbol)! : null;
+    const sym = inst ? (inst.providerIds as Record<string, string>).alphavantage ?? inst.symbol : "";
+    switch (job.kind) {
+      case "daily": return async () => { const s = await client.dailyCompact(sym, inst!.currency, today); return { received: s.bars.length, processed: await upsertBars(inst!.id, s, "alphavantage", fetchedAt()) }; };
+      case "weekly": return async () => { const s = await client.weekly(sym, inst!.currency, today); return { received: s.bars.length, processed: await upsertBars(inst!.id, s, "alphavantage", fetchedAt(), { skipPartial: true }) }; };
+      case "macro": {
+        const k = job.dataset.slice("macro:".length);
+        return async () => { const d = await macroJobs[k]!(); const m = MACRO_META[k]!; return { received: d.points.length, processed: await upsertMacro({ key: k, ...m, provider: "alphavantage" }, d, fetchedAt()) }; };
+      }
+      case "crypto": return async () => { const s = await client.cryptoDaily(inst!.symbol, inst!.currency, today); return { received: s.bars.length, processed: await upsertBars(inst!.id, s, "alphavantage", fetchedAt(), { skipPartial: true }) }; };
+      case "earnings": return async () => { const e = await client.earnings(inst!.symbol); return { received: e.length, processed: await upsertEarnings(inst!.id, e, "alphavantage", fetchedAt()) }; };
+      case "estimates": return async () => { const e = await client.estimates(inst!.symbol); return { received: e.length, processed: await upsertEstimates(inst!.id, e, "alphavantage", fetchedAt()) }; };
+      case "insider": return async () => { const t = await client.insider(inst!.symbol, fromDate); return { received: t.length, processed: await upsertInsider(inst!.id, t, "alphavantage", fetchedAt()), note: "Alpha Vantage liefert kein Meldedatum (Form 4: i. d. R. binnen 2 Geschäftstagen)" }; };
+      case "institutional": return async () => { const r = await client.institutional(inst!.symbol); return { received: r.holdings.length, processed: await upsertInstitutional(inst!.symbol, r, "alphavantage", fetchedAt()), note: r.mixedPeriods ? `Gemischte Meldestichtage: ${r.reportPeriods.join(", ")}` : undefined }; };
+      case "congress": return async () => {
+        const r = await client.congressTrades(inst!.symbol);
+        const c = await ingestPoliticianTx(r.trades.map(fromAlphaVantage), fetchedAt(), today);
+        return { received: r.trades.length + r.invalid, processed: c.INSERT + c.SUPERSEDE + c.DELETE_MARK + c.REVIEW + c.DUPLICATE };
+      };
+      case "splits": return async () => { const r = await client.splits(sym); return { received: r.splits.length + r.invalid, processed: await upsertSplits(inst!.id, r.splits, "alphavantage", `Alpha Vantage SPLITS (${today})`, fetchedAt()), note: r.invalid ? `${r.invalid} ungültige Einträge verworfen` : undefined }; };
+    }
+  };
+  for (const job of plan.run) {
+    const r = await withFetchLog("alphavantage", job.dataset, execute(job), 24 * 60);
+    out.push({ provider: "alphavantage", dataset: job.dataset, ok: r.ok, info: r.ok ? `${r.processed} Datensätze` : r.error });
+    if (!r.ok && r.kind === "RATE_LIMIT") break; // Anbieter meldet Limit → Rest nicht mehr versuchen
   }
-  const held = instruments.filter((i) => i.assetType === "STOCK");
-  for (const inst of held) {
-    await run(`congress:${inst.symbol}`, async () => {
-      const r = await client.congressTrades(inst.symbol);
-      const c = await ingestPoliticianTx(r.trades.map(fromAlphaVantage), fetchedAt(), today);
-      return { received: r.trades.length + r.invalid, processed: c.INSERT + c.SUPERSEDE + c.DELETE_MARK + c.REVIEW + c.DUPLICATE };
-    });
-  }
-  // Splitlisten (niedrigste Priorität): nur für Rohkurs-Reihen, höchstens alle 30 Tage je Instrument (schont das Tageskontingent)
-  const splitDue = (d: Date | null) => !d || Date.now() - d.getTime() > 30 * 86400000;
-  for (const inst of instruments.filter((i) => i.assetType !== "CRYPTO" && splitDue(i.splitsCheckedAt) && !(i.splitsCheckedSource ?? "").startsWith("manuell"))) {
-    const sym = (inst.providerIds as Record<string, string>).alphavantage ?? inst.symbol;
-    await run(`splits:${inst.symbol}`, async () => {
-      const r = await client.splits(sym);
-      return { received: r.splits.length + r.invalid, processed: await upsertSplits(inst.id, r.splits, "alphavantage", `Alpha Vantage SPLITS (${today})`, fetchedAt()), note: r.invalid ? `${r.invalid} ungültige Einträge verworfen` : undefined };
-    });
+  if (plan.deferred.length) {
+    // Ein Protokolleintrag statt vieler Fehlschläge; SKIPPED zählt nicht als Abruf
+    await withFetchLog("alphavantage", "kontingent", async () => ({ received: plan.deferred.length, processed: 0, status: "SKIPPED", note: `${plan.deferred.length} fällige Abrufe auf morgen verschoben (Tageskontingent): ${plan.deferred.map((j) => j.dataset).join(", ")}` }));
+    out.push({ provider: "alphavantage", dataset: "kontingent", ok: true, info: `${plan.deferred.length} Abrufe aufgeschoben` });
   }
   return out;
 }
