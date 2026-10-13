@@ -1,3 +1,4 @@
+import { displayFx } from "@/lib/server/data";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { loadPortfolio } from "@/lib/server/portfolio";
@@ -6,11 +7,14 @@ import { Card, PageHeader, DemoBanner, Badge, DataBadge, Empty, Table, Field } f
 import { ActionForm } from "@/components/forms";
 import { CsvImport, LegacyImport } from "@/components/csv-import";
 import { addTransaction, addCash, deleteTransaction, saveManualFx } from "@/app/actions";
-import { money, pct, qty, dateDe, num } from "@/lib/format";
+import { moneyDual, pct, qty, dateDe, num } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
 export default async function PortfolioPage() {
+  // Euro-Beträge mit Dollarwert daneben (Kurs: displayFx, Quelle in der Fußzeile)
+  const fx = await displayFx();
+  const money = (v: number | null | undefined, c: string, d?: number) => moneyDual(v, c, fx, d);
   const pf = await loadPortfolio();
   const r = pf.result;
   const base = pf.base;

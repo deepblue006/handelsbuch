@@ -73,11 +73,11 @@ test("Bewertungsmodell speichern erzeugt drei Szenarien", async ({ page }) => {
   await expect(page.getByRole("cell", { name: "basis" }).first()).toBeVisible();
 });
 
-test("Truth Social täuscht keinen Live-Feed vor", async ({ page }) => {
+test("Truth Social: Archivquelle aktiv, kein vorgetäuschter Feed", async ({ page }) => {
   await page.goto("/truth-social");
-  await expect(page.getByText("Keine Quelle aktiv – kein automatischer Abruf ins Dashboard")).toBeVisible();
-  // Archivquelle ist eine bewusste Nutzerentscheidung: angeboten, aber nicht vorab aktiv
-  await expect(page.getByRole("button", { name: "Archivquelle aktivieren und abrufen" })).toBeVisible();
+  // Archivquelle ab Werk aktiv (Nutzerentscheidung), abschaltbar; ohne Abruf keine Posts
+  await expect(page.getByText("Aktiv: Trump's Truth (trumpstruth.org)")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Archivquelle deaktivieren" })).toBeVisible();
   await expect(page.getByText(/Defending Democracy Together/)).toBeVisible();
   await expect(page.getByText(/Keine Posts im Dashboard gespeichert – es wird kein Live-Feed vorgetäuscht/)).toBeVisible();
   await expect(page.getByRole("link", { name: /Offizielles Profil/ })).toHaveAttribute("href", "https://truthsocial.com/@realDonaldTrump");
@@ -209,4 +209,11 @@ test("CoinGecko ohne Schlüssel: ehrliche Leerzustände statt Werten", async ({ 
   await expect(cg.getByText(/CoinGecko-ID am Instrument/)).toBeVisible();
   await page.goto("/einstellungen");
   await expect(page.locator("tr", { hasText: "CoinGecko" }).getByText(/Zugang fehlt: COINGECKO_API_KEY/)).toBeVisible();
+});
+
+test("Laptop-Ansicht: Euro-Beträge mit Dollarwert, Zeiten mit New-York-Zeit, Umrechnungskurs sichtbar", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByTestId("fx-note")).toContainText(/1 € = \d+,\d{4} \$/);
+  await expect(page.getByText(/€ \(≈ [\d.,]+\s\$\)/).first()).toBeVisible();
+  await expect(page.getByText(/(MESZ|MEZ) · [\d.,: ]+ET/).first()).toBeVisible();
 });

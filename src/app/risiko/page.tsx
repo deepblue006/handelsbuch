@@ -1,14 +1,18 @@
+import { displayFx } from "@/lib/server/data";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { loadPortfolio } from "@/lib/server/portfolio";
 import { analyzeAsset } from "@/lib/server/analysis";
 import { Card, PageHeader, Badge, Empty, Table, DemoBanner, Disclaimer } from "@/components/ui";
 import { ShareBars } from "@/components/charts";
-import { pct, dateDe, money } from "@/lib/format";
+import { pct, dateDe, moneyDual } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
 export default async function Risiko() {
+  // Euro-Beträge mit Dollarwert daneben (Kurs: displayFx, Quelle in der Fußzeile)
+  const fx = await displayFx();
+  const money = (v: number | null | undefined, c: string, d?: number) => moneyDual(v, c, fx, d);
   const pf = await loadPortfolio();
   const open = pf.result.positions.filter((p) => p.qty > 1e-10);
   const analyses = (await Promise.all(open.map((p) => analyzeAsset(p.instrument.symbol)))).filter((x): x is NonNullable<typeof x> => !!x);

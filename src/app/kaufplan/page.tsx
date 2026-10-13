@@ -1,3 +1,4 @@
+import { displayFx } from "@/lib/server/data";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { loadPortfolio } from "@/lib/server/portfolio";
@@ -6,12 +7,15 @@ import { shockScenario, simulateBuy, nextPlanDates } from "@/lib/calc/simulate";
 import { Card, PageHeader, Badge, Empty, Table, Field, Stat, DemoBanner, Disclaimer } from "@/components/ui";
 import { ActionForm } from "@/components/forms";
 import { addTranche, addSavingsPlan, setTrancheStatus } from "@/app/actions";
-import { money, pct, dateDe, num } from "@/lib/format";
+import { moneyDual, pct, dateDe, num } from "@/lib/format";
 import { parseDecimal } from "@/lib/portfolio/import";
 
 export const dynamic = "force-dynamic";
 
 export default async function Kaufplan({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  // Euro-Beträge mit Dollarwert daneben (Kurs: displayFx, Quelle in der Fußzeile)
+  const fx = await displayFx();
+  const money = (v: number | null | undefined, c: string, d?: number) => moneyDual(v, c, fx, d);
   const sp = await searchParams;
   const [pf, general, cfg] = await Promise.all([loadPortfolio(), getGeneral(), getRuleConfig()]);
   const base = pf.base;

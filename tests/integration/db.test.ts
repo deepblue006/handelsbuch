@@ -151,7 +151,7 @@ d("Datenbank-Integration", () => {
     expect(await ingest.countSuccessThisMonth("coingecko")).toBe(3);
   });
 
-  it("Truth-Social-Archivquelle (synthetischer Feed): erst nach Aktivierung, ohne Dubletten, Text bleibt beim ersten Stand, Größenlimit", async () => {
+  it("Truth-Social-Archivquelle (synthetischer Feed): ab Werk aktiv, abschaltbar, ohne Dubletten, Text bleibt beim ersten Stand, Größenlimit", async () => {
     const refresh = await import("@/lib/server/refresh");
     const { vi } = await import("vitest");
     await prisma.socialPost.deleteMany({});
@@ -163,10 +163,12 @@ d("Datenbank-Integration", () => {
     const urls: string[] = [];
     const spy = vi.spyOn(globalThis, "fetch").mockImplementation((async (u: string | URL) => { urls.push(String(u)); return new Response(body, { status: 200 }); }) as typeof fetch);
     try {
-      // ohne Aktivierung: kein Abruf
+      // ab Werk aktiv; ausdrücklich deaktiviert → kein Abruf
+      expect(await refresh.truthPresetActive()).toBe(true);
+      await prisma.setting.create({ data: { key: "truthFeedPreset", value: { active: false } } });
       expect((await refresh.refreshTruthSocial())[0]!.ok).toBe(false);
       expect(urls).toEqual([]);
-      await prisma.setting.create({ data: { key: "truthFeedPreset", value: { active: true } } });
+      await prisma.setting.update({ where: { key: "truthFeedPreset" }, data: { value: { active: true } } });
       const first = (await refresh.refreshTruthSocial())[0]!;
       expect(first).toMatchObject({ ok: true, info: "2 Posts" });
       expect(urls[0]).toContain("trumpstruth.org/feed");

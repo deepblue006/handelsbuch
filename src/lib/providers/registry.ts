@@ -264,9 +264,9 @@ export const PROVIDERS: ProviderInfo[] = [
     fields: ["Posttext (wie von der Quelle geliefert)", "Zeitpunkt", "Link zum Original (falls im Eintrag)", "Medienhinweis"],
     notProvided: ["Medien (nur Hinweis)", "Reposts nicht gesondert gekennzeichnet (Format ungeprüft)", "Gewähr für Vollständigkeit"],
     verification: "UNGEPRÜFT",
-    verificationNote: "trumpstruth.org und truthsocial.com in der Entwicklungsumgebung gesperrt; Feed-Parameter über FAQ-Auszug (Websuche) bestätigt, Feldstruktur nicht. Aktivierung durch den Nutzer auf der Truth-Social-Seite.",
+    verificationNote: "trumpstruth.org und truthsocial.com in der Entwicklungsumgebung gesperrt; Feed-Parameter über FAQ-Auszug (Websuche) bestätigt, Feldstruktur nicht. Archivquelle ab Werk aktiv (Nutzerentscheidung), abschaltbar auf der Truth-Social-Seite.",
     implemented: true,
-    defaultEnabled: false,
+    defaultEnabled: true,
   },
   {
     id: "farside",

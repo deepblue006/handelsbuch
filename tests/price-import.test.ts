@@ -25,4 +25,22 @@ describe("Kurs-CSV-Import", () => {
   it("fehlende Pflichtspalten → klare Fehlermeldung", () => {
     expect(() => parsePriceCsv("a,b\n1,2")).toThrow(/Datum und Schlusskurs/);
   });
+
+  it("Nasdaq.com-Format (synthetisch, laut Erinnerung – nicht live geprüft): Close/Last, $-Werte, US-Datum MM/TT/JJJJ", () => {
+    const csv = "Date,Close/Last,Volume,Open,High,Low\n10/09/2026,$336.64,41234567,$330.10,$338.00,$329.50\n10/08/2026,$331.20,39000000,$328.00,$332.00,$327.10\n09/30/2026,$320.00,38000000,$319.00,$321.00,$318.00\n";
+    const r = parsePriceCsv(csv);
+    expect(r.invalid).toEqual([]);
+    expect(r.bars.map((b) => b.date)).toEqual(["2026-09-30", "2026-10-08", "2026-10-09"]);
+    expect(r.bars.at(-1)).toMatchObject({ close: 336.64, open: 330.1, high: 338, low: 329.5, volume: 41234567 });
+  });
+  it("Stooq-Format (englisch und polnisch)", () => {
+    const en = parsePriceCsv("Date,Open,High,Low,Close,Volume\n2026-10-08,328,332,327.1,331.2,39000000\n2026-10-09,330.1,338,329.5,336.64,41234567\n");
+    expect(en.bars).toHaveLength(2);
+    const pl = parsePriceCsv("Data,Otwarcie,Najwyzszy,Najnizszy,Zamkniecie,Wolumen\n2026-10-09,330.1,338,329.5,336.64,41234567\n");
+    expect(pl.bars[0]).toMatchObject({ close: 336.64, high: 338 });
+  });
+  it("Schrägstrich-Datum: Reihenfolge nur aus eindeutigen Daten, sonst Ablehnung", () => {
+    expect(parsePriceCsv("Date,Close\n25/09/2026,10\n01/10/2026,11\n").bars.map((b) => b.date)).toEqual(["2026-09-25", "2026-10-01"]);
+    expect(() => parsePriceCsv("Date,Close\n01/02/2026,10\n03/04/2026,11\n")).toThrow(/nicht eindeutig/);
+  });
 });

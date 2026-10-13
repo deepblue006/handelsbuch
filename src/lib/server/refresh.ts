@@ -321,9 +321,15 @@ export async function processHousePdfs(year: number): Promise<JobResult[]> {
   return out;
 }
 
-export async function truthFeedSource() {
+/** Archiv-Voreinstellung: ab Werk aktiv (Entscheidung des Nutzers, 13.10.2026), abschaltbar auf der Truth-Social-Seite. */
+export async function truthPresetActive() {
   const st = await prisma.setting.findUnique({ where: { key: "truthFeedPreset" } });
-  return resolveFeedSource(process.env.TRUTHSOCIAL_FEED_URL, !!(st?.value as { active?: boolean } | null)?.active);
+  const v = st?.value as { active?: boolean } | null | undefined;
+  return v?.active ?? true;
+}
+
+export async function truthFeedSource() {
+  return resolveFeedSource(process.env.TRUTHSOCIAL_FEED_URL, await truthPresetActive());
 }
 
 export async function refreshTruthSocial(): Promise<JobResult[]> {

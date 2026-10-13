@@ -1,3 +1,4 @@
+import { displayFx } from "@/lib/server/data";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { loadPortfolio } from "@/lib/server/portfolio";
@@ -5,7 +6,7 @@ import { marketOverview } from "@/lib/server/market";
 import { assessFreshness } from "@/lib/data/quality";
 import { Card, PageHeader, Stat, DemoBanner, Badge, DataBadge, Empty, Disclaimer, Table } from "@/components/ui";
 import { ShareBars } from "@/components/charts";
-import { money, pct, dateDe, dateTimeDe, num } from "@/lib/format";
+import { moneyDual, pct, dateDe, dateTimeDe, num } from "@/lib/format";
 import { modifiedDietz, holdingsAt } from "@/lib/calc/portfolio";
 import { FxTable } from "@/lib/calc/fx";
 
@@ -14,6 +15,9 @@ export const dynamic = "force-dynamic";
 const TYPE_LABEL: Record<string, string> = { STOCK: "Aktien", ETF: "ETFs", CRYPTO: "Krypto", INDEX_PROXY: "Index-ETF", OTHER: "Sonstige", CASH: "Liquidität" };
 
 export default async function Overview() {
+  // Euro-Beträge mit Dollarwert daneben (Kurs: displayFx, Quelle in der Fußzeile)
+  const fx = await displayFx();
+  const money = (v: number | null | undefined, c: string, d?: number) => moneyDual(v, c, fx, d);
   const [pf, mk] = await Promise.all([loadPortfolio(), marketOverview()]);
   const r = pf.result;
   const base = pf.base;

@@ -1,3 +1,4 @@
+import { displayFx } from "@/lib/server/data";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { analyzeAsset } from "@/lib/server/analysis";
@@ -5,11 +6,14 @@ import { Card, PageHeader, Badge, Empty, Table, Field, Missing, Disclaimer } fro
 import { ActionForm } from "@/components/forms";
 import { addWatch } from "@/app/actions";
 import { STATE_LABELS } from "@/lib/score/score";
-import { money, num, pct, dateDe } from "@/lib/format";
+import { moneyDual, num, pct, dateDe } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
 export default async function Cockpit({ searchParams }: { searchParams: Promise<{ sort?: string }> }) {
+  // Euro-Beträge mit Dollarwert daneben (Kurs: displayFx, Quelle in der Fußzeile)
+  const fx = await displayFx();
+  const money = (v: number | null | undefined, c: string, d?: number) => moneyDual(v, c, fx, d);
   const { sort = "score" } = await searchParams;
   const list = await prisma.instrument.findMany({ where: { OR: [{ onWatchlist: true }, { transactions: { some: {} } }] }, orderBy: { symbol: "asc" } });
   const rows = (await Promise.all(list.map((i) => analyzeAsset(i.symbol)))).filter((x): x is NonNullable<typeof x> => !!x);

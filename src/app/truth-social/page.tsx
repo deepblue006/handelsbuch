@@ -3,20 +3,19 @@ import { OFFICIAL_PROFILE_URL, ARCHIVE_PRESET } from "@/lib/social/truthsocial";
 import { Card, PageHeader, Badge, Empty } from "@/components/ui";
 import { ActionForm } from "@/components/forms";
 import { dateTimeDe } from "@/lib/format";
-import { isEnabled, truthFeedSource } from "@/lib/server/refresh";
+import { isEnabled, truthFeedSource, truthPresetActive } from "@/lib/server/refresh";
 import { setTruthPreset, fetchTruthNow } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
 
 export default async function Truth() {
-  const [posts, lastLog, enabled, source, preset] = await Promise.all([
+  const [posts, lastLog, enabled, source, presetActive] = await Promise.all([
     prisma.socialPost.findMany({ where: { platform: "TRUTH_SOCIAL" }, orderBy: { createdAt: "desc" }, take: 100 }),
     prisma.fetchLog.findFirst({ where: { providerId: "truthsocial" }, orderBy: { startedAt: "desc" } }),
     isEnabled("truthsocial"),
     truthFeedSource(),
-    prisma.setting.findUnique({ where: { key: "truthFeedPreset" } }),
+    truthPresetActive(),
   ]);
-  const presetActive = !!(preset?.value as { active?: boolean } | null)?.active;
   const envActive = source?.kind === "ENV";
   const range = posts.length ? `${dateTimeDe(posts.at(-1)!.createdAt)} bis ${dateTimeDe(posts[0]!.createdAt)}` : null;
   return (

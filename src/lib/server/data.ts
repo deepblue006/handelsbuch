@@ -2,6 +2,7 @@
  * Lesezugriffe mit Quellenpriorität. Eine Zeitreihe stammt immer aus genau EINEM Provider
  * (keine stille Vermischung); gewählt wird die Quelle mit dem jüngsten Datenstand.
  */
+import { cache } from "react";
 import type { BarInterval, Instrument } from "@prisma/client";
 import { prisma } from "../db";
 import { FxTable, type FxRate } from "../calc/fx";
@@ -157,3 +158,10 @@ export async function fxTable(): Promise<{ table: FxTable; rates: FxRate[] }> {
   for (const r of ((manual?.value as unknown as FxRate[]) ?? [])) if (r?.pair && r.rate > 0 && !rates.some((x) => x.pair === r.pair)) rates.push({ ...r, source: "manuell" });
   return { table: new FxTable(rates), rates };
 }
+
+/** Kurs für die Dollar-Anzeige (je Anfrage einmal ermittelt): EZB > Alpha Vantage > FRED > manuell. */
+export const displayFx = cache(async (): Promise<import("../format").DisplayFx> => {
+  const { rates } = await fxTable();
+  const r = rates.find((x) => x.pair === "EURUSD");
+  return r ? { usdPerEur: r.rate, date: r.date, source: r.source ?? null } : { usdPerEur: null, date: null, source: null };
+});

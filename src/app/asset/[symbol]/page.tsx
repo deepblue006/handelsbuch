@@ -1,3 +1,4 @@
+import { displayFx } from "@/lib/server/data";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { analyzeAsset } from "@/lib/server/analysis";
@@ -10,7 +11,7 @@ import { saveValuation, saveMeta, addLevel, addThesisEvent, addAnalystAction, im
 import { formatSplitRatio } from "@/lib/calc/splits";
 import { CG_ATTRIBUTION } from "@/lib/providers/coingecko";
 import { COMPONENT_LABELS, STATE_LABELS } from "@/lib/score/score";
-import { money, num, pct, dateDe, dateTimeDe, compact, qty } from "@/lib/format";
+import { moneyDual, num, pct, dateDe, dateTimeDe, compact, qty } from "@/lib/format";
 import { FORM4_CODES } from "@/lib/providers/alphavantage";
 import { upcomingFomc } from "@/lib/fomc";
 import { classifyPeg } from "@/lib/calc/valuation";
@@ -20,6 +21,9 @@ export const dynamic = "force-dynamic";
 const ruleTone = (s: string, d: string) => (s === "AUSGELÖST" ? (d === "PRO" ? "good" : d === "CONTRA" ? "bad" : "warn") : s === "DATEN_FEHLEN" ? "warn" : "neutral") as "good" | "bad" | "warn" | "neutral";
 
 export default async function AssetPage({ params }: { params: Promise<{ symbol: string }> }) {
+  // Euro-Beträge mit Dollarwert daneben (Kurs: displayFx, Quelle in der Fußzeile)
+  const fx = await displayFx();
+  const money = (v: number | null | undefined, c: string, d?: number) => moneyDual(v, c, fx, d);
   const { symbol } = await params;
   const a = await analyzeAsset(decodeURIComponent(symbol).toUpperCase());
   if (!a) notFound();
