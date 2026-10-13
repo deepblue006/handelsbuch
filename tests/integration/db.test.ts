@@ -111,4 +111,43 @@ d("Datenbank-Integration", () => {
     expect(logs[0]!.errorMessage).toContain("daily:MSFT");
     expect((await prisma.providerState.findUnique({ where: { providerId: "alphavantage" } }))?.lastSuccessAt ?? null).toBeNull();
   });
+
+  it("CoinGecko-Job (synthetische Antworten): Kurs mit Anbieter-Zeitstempel, Marktdaten, Tageskurse ohne laufenden Tag, Gesamtmarkt", async () => {
+    const refresh = await import("@/lib/server/refresh");
+    const data = await import("@/lib/server/data");
+    const { vi } = await import("vitest");
+    const btc = await ingest.ensureInstrument({ symbol: "BTCCG", name: "Bitcoin", assetType: "CRYPTO", currency: "EUR", providerIds: { coingecko: "bitcoin" }, onWatchlist: true });
+    await prisma.fetchLog.deleteMany({ where: { providerId: "coingecko" } });
+    const today = new Date().toISOString().slice(0, 10);
+    const day = (offset: number) => Date.parse(today + "T00:00:00Z") + offset * 86400000;
+    const routes: Record<string, unknown> = {
+      "/coins/markets": [{ id: "bitcoin", current_price: 61000, last_updated: new Date(Date.now() - 60_000).toISOString(), market_cap: 1.2e12, total_volume: 3e10, circulating_supply: 1.99e7, ath: 99000, ath_change_percentage: -38.4, ath_date: "2026-01-14T00:00:00Z" }],
+      "/coins/bitcoin/market_chart": { prices: [[day(-2), 59000], [day(-1), 60000], [Date.now(), 61000]], total_volumes: [[day(-1), 1]] },
+      "/global": { data: { total_market_cap: { eur: 2.1e12 }, market_cap_percentage: { btc: 56.2 }, updated_at: Math.floor(Date.now() / 1000) } },
+    };
+    const urls: string[] = [];
+    const spy = vi.spyOn(globalThis, "fetch").mockImplementation((async (u: string | URL) => {
+      urls.push(String(u));
+      const body = routes[new URL(String(u)).pathname.replace("/api/v3", "")];
+      return new Response(JSON.stringify(body ?? {}), { status: body ? 200 : 404 });
+    }) as typeof fetch);
+    process.env.COINGECKO_API_KEY = "CG-synthetisch-1234567";
+    try {
+      const out = await refresh.refreshCoinGecko();
+      expect(out.filter((o) => !o.ok)).toEqual([]);
+    } finally {
+      spy.mockRestore();
+      delete process.env.COINGECKO_API_KEY;
+    }
+    expect(urls.every((u) => !u.includes("CG-synthetisch"))).toBe(true);
+    const bars = await prisma.priceBar.findMany({ where: { instrumentId: btc.id, provider: "coingecko" }, orderBy: { date: "asc" } });
+    expect(bars.map((b) => b.close)).toEqual([59000, 60000]); // laufender UTC-Tag verworfen
+    const price = await data.latestPrice(btc);
+    expect(price).toMatchObject({ price: 61000, source: "coingecko", interval: "QUOTE" });
+    const market = (await prisma.setting.findUnique({ where: { key: "cg:market:BTCCG" } }))?.value as { athChangePct: number; missingFields: string[] };
+    expect(market.athChangePct).toBe(-38.4);
+    expect(market.missingFields).toEqual([]);
+    expect(((await prisma.setting.findUnique({ where: { key: "cg:global" } }))?.value as { dominancePct: { btc: number } }).dominancePct.btc).toBe(56.2);
+    expect(await ingest.countSuccessThisMonth("coingecko")).toBe(3);
+  });
 });

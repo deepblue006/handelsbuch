@@ -37,6 +37,13 @@ export async function withFetchLog(providerId: string, dataset: string, fn: () =
   }
 }
 
+/** Erfolgreiche Abrufe eines Providers im laufenden UTC-Monat (Monatskontingent, z. B. CoinGecko-Credits). */
+export async function countSuccessThisMonth(providerId: string) {
+  const now = new Date();
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  return prisma.fetchLog.count({ where: { providerId, startedAt: { gte: start }, status: { in: ["SUCCESS", "PARTIAL"] } } });
+}
+
 /** Anzahl erfolgreicher/fehlgeschlagener Abrufe eines Providers seit Mitternacht UTC (für Tageskontingente). */
 export async function countCallsToday(providerId: string) {
   const start = new Date();

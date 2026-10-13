@@ -33,7 +33,7 @@ und sind konfigurierbare Startparameter.
 | Politiker-Radar: Sekundärquelle Alpha Vantage | implementiert und mit echten Daten (NVDA) getestet |
 | Politiker-Radar: House-Clerk-Index, automatische PDF-Textextraktion (gedrosselt), PDF-Upload, Prüfwarteschlange, Versionen | implementiert und mit synthetischen PDFs getestet (E2E); Abruf echter House-Dokumente nicht verifiziert (Host gesperrt); gescannte PDFs → „OCR nötig“ |
 | Senate eFD, OGE | kein automatischer Abruf; manuelle Meldung mit offiziellem Link + PDF-Upload implementiert |
-| Krypto-Kurse (CoinGecko / Alpha Vantage) | CoinGecko nicht verifiziert; Alpha-Vantage-Format verifiziert (BTC/EUR-Snapshot) |
+| Krypto über CoinGecko Demo-API (Kurs mit Anbieter-Zeitstempel, Marktkapitalisierung, Volumen, Umlauf, Allzeithoch, 365 Tageskurse, Gesamtmarkt/BTC-Dominanz; Monatskontingent, Quellennennung) / Alpha Vantage als Ersatz | implementiert und mit synthetischen Antworten getestet (Unit, DB-Integration, E2E-Leerzustände); **live ungeprüft** – `api.coingecko.com` in der Sandbox gesperrt; Auth/Grenzen über Doku-Auszüge bestätigt, `/coins/markets`-Feldnamen nicht. Alpha-Vantage-Format verifiziert (BTC/EUR-Snapshot) |
 | On-Chain-Kennzahlen | noch nicht implementiert |
 | Truth Social | kein Live-Feed (keine zulässige Quelle verifiziert); optionaler RSS-Import implementiert, nicht verifiziert |
 | Kaufplan, Sparpläne, Tranchen, Rücksetzer-/KI-Stressszenario, Kaufsimulation | implementiert und getestet |

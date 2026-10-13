@@ -8,6 +8,7 @@ import { ActionForm } from "@/components/forms";
 import { ReverseValuation } from "@/components/reverse-valuation";
 import { saveValuation, saveMeta, addLevel, addThesisEvent, addAnalystAction, importPrices, addSplit, deleteSplit, confirmSplitList } from "@/app/actions";
 import { formatSplitRatio } from "@/lib/calc/splits";
+import { CG_ATTRIBUTION } from "@/lib/providers/coingecko";
 import { COMPONENT_LABELS, STATE_LABELS } from "@/lib/score/score";
 import { money, num, pct, dateDe, dateTimeDe, compact, qty } from "@/lib/format";
 import { FORM4_CODES } from "@/lib/providers/alphavantage";
@@ -200,6 +201,25 @@ export default async function AssetPage({ params }: { params: Promise<{ symbol: 
           <ul className="text-xs">{inst.levels.map((l) => <li key={l.id}>{l.kind === "SUPPORT" ? "Unterstützung" : "Widerstand"} {money(l.price, cur)} {l.note}</li>)}</ul>
           <form action={addLevel} className="mt-2 flex flex-wrap gap-2 text-xs"><input type="hidden" name="instrumentId" value={inst.id} /><input name="price" placeholder="Kurs" className="w-24" /><select name="kind"><option value="SUPPORT">Unterstützung</option><option value="RESISTANCE">Widerstand</option></select><input name="note" placeholder="Notiz" className="w-32" /><button className="rounded border border-line px-2">+</button></form>
         </Card>
+
+        {isCrypto && (
+          <Card title="Marktdaten (CoinGecko)" id="coingecko">
+            {a.cgMarket ? (
+              <>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div>Kurs: <b>{money(a.cgMarket.price, a.cgMarket.currency)}</b></div>
+                  <div>24 h: <b>{pct(a.cgMarket.change24hPct, 1)}</b></div>
+                  <div>Marktkapitalisierung: <b>{compact(a.cgMarket.marketCap, a.cgMarket.currency)}</b>{a.cgMarket.rank != null && <span className="text-xs text-ink-3"> (Rang {a.cgMarket.rank})</span>}</div>
+                  <div>Volumen 24 h: <b>{compact(a.cgMarket.volume24h, a.cgMarket.currency)}</b></div>
+                  <div>Umlauf: <b>{num(a.cgMarket.circulatingSupply, 0)}</b>{a.cgMarket.maxSupply != null && <span className="text-xs text-ink-3"> von max. {num(a.cgMarket.maxSupply, 0)}</span>}</div>
+                  <div>Allzeithoch: <b>{money(a.cgMarket.ath, a.cgMarket.currency)}</b> <span className="text-xs text-ink-3">({dateDe(a.cgMarket.athDate)}, Abstand {pct(a.cgMarket.athChangePct, 1)})</span></div>
+                </div>
+                {a.cgMarket.missingFields.length > 0 && <p className="mt-1 text-[11px] text-warn">In der Antwort fehlende Felder: {a.cgMarket.missingFields.join(", ")} – Werte als „–“ angezeigt, nicht geschätzt.</p>}
+                <p className="mt-2 text-[11px] text-ink-3">Kursstand laut CoinGecko: {dateTimeDe(a.cgMarket.lastUpdated)} · abgerufen {dateTimeDe(a.cgMarket.fetchedAt)} · aggregierter Börsenpreis, kein Handelskurs eines bestimmten Handelsplatzes. <a className="text-accent" href={CG_ATTRIBUTION.url} target="_blank" rel="noreferrer">{CG_ATTRIBUTION.text}</a></p>
+              </>
+            ) : <Empty>Keine CoinGecko-Marktdaten. Voraussetzungen: CoinGecko-ID am Instrument (z. B. „bitcoin“), COINGECKO_API_KEY (kostenloser Demo-Schlüssel), Aktualisierung.</Empty>}
+          </Card>
+        )}
 
         <Card title="Fundamentaldaten (SEC, Jahreswerte)" className="xl:col-span-2">
           {isCrypto ? <Empty>Für Krypto nicht anwendbar.</Empty> : a.fundamentals.count === 0 ? (

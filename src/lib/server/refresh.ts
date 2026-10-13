@@ -7,12 +7,13 @@ import { prisma } from "../db";
 import { PROVIDERS, configStatus } from "../providers/registry";
 import { AlphaVantageClient } from "../providers/alphavantage";
 import { buildJobs, planJobs, type AvInstrument, type AvJob } from "../providers/av-plan";
+import { CoinGeckoClient } from "../providers/coingecko";
 import { RateLimiter, ProviderError, fetchWithRetry } from "../providers/http";
-import { FRED_SERIES, fredSeries, ecbEurUsd, coingeckoChart, secTickerMap, secCompanyFacts, kalshiFedMarkets } from "../providers/official";
+import { FRED_SERIES, fredSeries, ecbEurUsd, secTickerMap, secCompanyFacts, kalshiFedMarkets } from "../providers/official";
 import { fromAlphaVantage, parseHouseIndexXml, parsePtrText } from "../politics/normalize";
 import { extractPdfText } from "../politics/pdf";
 import { parseRss } from "../social/truthsocial";
-import { withFetchLog, type FetchOutcome, countCallsToday, upsertBars, upsertMacro, upsertEarnings, ingestPoliticianTx, upsertEstimates, upsertInsider, upsertInstitutional, upsertSplits } from "./ingest";
+import { withFetchLog, type FetchOutcome, countCallsToday, countSuccessThisMonth, upsertBars, upsertMacro, upsertEarnings, ingestPoliticianTx, upsertEstimates, upsertInsider, upsertInstitutional, upsertSplits } from "./ingest";
 import { todayIso } from "../settings";
 
 export async function isEnabled(providerId: string): Promise<boolean> {
@@ -56,7 +57,7 @@ export async function alphaVantagePlan(now = new Date()) {
   const descr: AvInstrument[] = instruments.map((i) => ({
     symbol: i.symbol, assetType: i.assetType, held: i.onWatchlist || i._count.transactions > 0, isIndexProxy: i.assetType === "INDEX_PROXY",
     isSectorEtf: i.industry === "SPDR-Sektor-ETF", inBreadthUniverse: i.inBreadthUniverse,
-    splitsManual: (i.splitsCheckedSource ?? "").startsWith("manuell"), splitsCheckedAt: i.splitsCheckedAt, hasCoinGecko: !!process.env.COINGECKO_API_KEY,
+    splitsManual: (i.splitsCheckedSource ?? "").startsWith("manuell"), splitsCheckedAt: i.splitsCheckedAt, hasCoinGecko: !!process.env.COINGECKO_API_KEY && !!(i.providerIds as Record<string, string>).coingecko,
   }));
   const jobs = buildJobs(descr, now);
   return { plan: planJobs(jobs, lastSuccess, now, dailyLimit - used), used, dailyLimit, instruments, totalJobs: jobs.length };
@@ -94,7 +95,8 @@ export async function refreshAlphaVantage(): Promise<JobResult[]> {
         const k = job.dataset.slice("macro:".length);
         return async () => { const d = await macroJobs[k]!(); const m = MACRO_META[k]!; return { received: d.points.length, processed: await upsertMacro({ key: k, ...m, provider: "alphavantage" }, d, fetchedAt()) }; };
       }
-      case "crypto": return async () => { const s = await client.cryptoDaily(inst!.symbol, inst!.currency, today); return { received: s.bars.length, processed: await upsertBars(inst!.id, s, "alphavantage", fetchedAt(), { skipPartial: true }) }; };
+      // Krypto: UTC-Tageskerzen → laufenden Tag nach UTC-Datum erkennen
+      case "crypto": return async () => { const s = await client.cryptoDaily(inst!.symbol, inst!.currency, todayIso("UTC")); return { received: s.bars.length, processed: await upsertBars(inst!.id, s, "alphavantage", fetchedAt(), { skipPartial: true }) }; };
       case "earnings": return async () => { const e = await client.earnings(inst!.symbol); return { received: e.length, processed: await upsertEarnings(inst!.id, e, "alphavantage", fetchedAt()) }; };
       case "estimates": return async () => { const e = await client.estimates(inst!.symbol); return { received: e.length, processed: await upsertEstimates(inst!.id, e, "alphavantage", fetchedAt()) }; };
       case "insider": return async () => { const t = await client.insider(inst!.symbol, fromDate); return { received: t.length, processed: await upsertInsider(inst!.id, t, "alphavantage", fetchedAt()), note: "Alpha Vantage liefert kein Meldedatum (Form 4: i. d. R. binnen 2 Geschäftstagen)" }; };
@@ -147,23 +149,68 @@ export async function refreshEcb(): Promise<JobResult[]> {
   return [{ provider: "ecb", dataset: "EURUSD", ok: r.ok, info: r.ok ? `${r.processed}` : r.error }];
 }
 
+/** Speichert eine Provider-Momentaufnahme (JSON) unter einem Datenschlüssel – keine Konfiguration. */
+async function storeSnapshot(key: string, value: unknown) {
+  const v = JSON.parse(JSON.stringify(value)) as object;
+  await prisma.setting.upsert({ where: { key }, create: { key, value: v }, update: { value: v } });
+}
+
 export async function refreshCoinGecko(): Promise<JobResult[]> {
   if (!(await isEnabled("coingecko"))) return [];
   const out: JobResult[] = [];
-  const key = process.env.COINGECKO_API_KEY ?? "";
-  const today = todayIso();
-  const cryptos = await prisma.instrument.findMany({ where: { assetType: "CRYPTO", isDemo: false } });
-  for (const c of cryptos) {
-    const id = (c.providerIds as Record<string, string>).coingecko;
-    const ds = `chart:${c.symbol}`;
-    if (!id || (await fetchedToday("coingecko", ds))) continue;
-    const r = await withFetchLog("coingecko", ds, async () => {
-      const d = await coingeckoChart(id, c.currency, key, today);
-      const bars = d.partialLast ? d.bars.slice(0, -1) : d.bars;
-      return { received: d.bars.length, processed: await upsertBars(c.id, { symbol: c.symbol, currency: c.currency, interval: "DAY", adjusted: false, lastRefreshed: null, timeZone: "UTC", bars, partialLastBar: false }, "coingecko", new Date()) };
-    });
-    out.push({ provider: "coingecko", dataset: ds, ok: r.ok, info: r.ok ? `${r.processed}` : r.error });
+  const today = todayIso("UTC"); // Krypto-Tageskerzen schließen um 00:00 UTC – nicht Berliner Datum verwenden
+  const monthlyLimit = Number(process.env.COINGECKO_MONTHLY_CREDITS ?? 10_000);
+  let client: CoinGeckoClient;
+  try {
+    // 2,1 s Abstand ≈ 28/min: unter dem konservativsten genannten Demo-Limit (30/min)
+    client = new CoinGeckoClient(process.env.COINGECKO_API_KEY ?? "", new RateLimiter(2100), async () => ({ used: await countSuccessThisMonth("coingecko"), limit: monthlyLimit }));
+  } catch (e) {
+    await withFetchLog("coingecko", "konfiguration", async () => { throw e; });
+    return [{ provider: "coingecko", dataset: "konfiguration", ok: false, info: "COINGECKO_API_KEY fehlt" }];
   }
+  const cryptos = (await prisma.instrument.findMany({ where: { assetType: "CRYPTO", isDemo: false } })).filter((c) => (c.providerIds as Record<string, string>).coingecko);
+  const push = (dataset: string, r: Awaited<ReturnType<typeof withFetchLog>>) => out.push({ provider: "coingecko", dataset, ok: r.ok, info: r.ok ? `${r.processed} Datensätze` : r.error });
+
+  // 1) Kurs + Marktdaten: eine Anfrage je Handelswährung für alle Coins
+  const byCur = new Map<string, typeof cryptos>();
+  for (const c of cryptos) byCur.set(c.currency, [...(byCur.get(c.currency) ?? []), c]);
+  for (const [cur, list] of byCur) {
+    const ds = `markets:${cur}`;
+    push(ds, await withFetchLog("coingecko", ds, async () => {
+      const idOf = (c: (typeof list)[number]) => (c.providerIds as Record<string, string>).coingecko!;
+      const r = await client.markets(list.map(idOf), cur);
+      const fetchedAt = new Date();
+      let processed = 0;
+      for (const c of list) {
+        const m = r.coins.find((x) => x.id === idOf(c));
+        if (!m) continue;
+        if (m.price != null) await prisma.quote.create({ data: { instrumentId: c.id, last: m.price, quoteTime: m.lastUpdated ? new Date(m.lastUpdated) : null, venue: "CoinGecko-Aggregat", currency: cur, provider: "coingecko", fetchedAt } });
+        await storeSnapshot(`cg:market:${c.symbol}`, { ...m, currency: cur, fetchedAt: fetchedAt.toISOString(), missingFields: r.missingFields });
+        processed++;
+      }
+      const notFound = list.filter((c) => !r.coins.some((x) => x.id === idOf(c))).map((c) => `${c.symbol} (${idOf(c)})`);
+      const notes = [notFound.length ? `nicht gefunden: ${notFound.join(", ")}` : "", r.missingFields.length ? `fehlende Felder: ${r.missingFields.join(", ")}` : "", r.invalid ? `${r.invalid} ungültige Zeilen` : ""].filter(Boolean);
+      return { received: r.coins.length + r.invalid, processed, note: notes.length ? notes.join("; ") : undefined };
+    }));
+  }
+
+  // 2) Tageskurse (365 Tage, Demo-Grenze); laufender UTC-Tag wird verworfen
+  for (const c of cryptos) {
+    const ds = `chart:${c.symbol}`;
+    if (await fetchedToday("coingecko", ds)) continue;
+    push(ds, await withFetchLog("coingecko", ds, async () => {
+      const d = await client.chart((c.providerIds as Record<string, string>).coingecko!, c.currency, today);
+      const bars = d.partialLast ? d.bars.slice(0, -1) : d.bars;
+      return { received: d.bars.length, processed: await upsertBars(c.id, { symbol: c.symbol, currency: c.currency, interval: "DAY", adjusted: false, lastRefreshed: null, timeZone: "UTC", bars, partialLastBar: false }, "coingecko", new Date()), note: d.partialLast ? "laufender UTC-Tag verworfen" : undefined };
+    }));
+  }
+
+  // 3) Gesamtmarkt (BTC-Dominanz, Marktkapitalisierung); Anbieter aktualisiert alle 10 Minuten
+  push("global", await withFetchLog("coingecko", "global", async () => {
+    const g = await client.global();
+    await storeSnapshot("cg:global", { ...g, fetchedAt: new Date().toISOString() });
+    return { received: 1, processed: 1 };
+  }));
   return out;
 }
 

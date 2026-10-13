@@ -1,8 +1,9 @@
+import { CG_ATTRIBUTION } from "@/lib/providers/coingecko";
 import { marketOverview } from "@/lib/server/market";
 import { assessFreshness } from "@/lib/data/quality";
 import { Card, PageHeader, Badge, DataBadge, Empty, Table, SourceLine, Missing, Disclaimer } from "@/components/ui";
 import { LinesChart } from "@/components/charts";
-import { money, num, pct, dateDe } from "@/lib/format";
+import { money, num, pct, dateDe, dateTimeDe, compact } from "@/lib/format";
 import { FOMC_SOURCE_NOTE } from "@/lib/fomc";
 import { ActionForm } from "@/components/forms";
 import { Field } from "@/components/ui";
@@ -68,6 +69,20 @@ export default async function Markt() {
           </ActionForm>
           <p className="mt-1 text-[11px] text-ink-3">Wird für Regel A nur genutzt, wenn das eigene Universum nicht repräsentativ ist und der Wert höchstens 7 Tage alt ist. Aktuell: {b.external ? `${b.external.points.at(-1)?.value ?? "–"} % (${dateDe(b.external.points.at(-1)?.date)}, ${b.external.provider})` : "keiner"}.</p>
         </details>
+      </Card>
+
+      <Card title="Krypto-Gesamtmarkt (CoinGecko) – Kontext" className="mt-4" id="krypto-markt">
+        {m.cryptoGlobal ? (
+          <>
+            <div className="grid grid-cols-2 gap-2 text-sm md:grid-cols-4">
+              <div>Marktkapitalisierung: <b>{compact(m.cryptoGlobal.totalMarketCap.eur ?? null, "EUR")}</b> <span className="text-xs text-ink-3">({compact(m.cryptoGlobal.totalMarketCap.usd ?? null, "USD")})</span></div>
+              <div>Veränderung 24 h (USD): <b>{pct(m.cryptoGlobal.change24hUsdPct, 1)}</b></div>
+              <div>Bitcoin-Dominanz: <b>{pct(m.cryptoGlobal.dominancePct.btc ?? null, 1, false)}</b></div>
+              <div>Ethereum-Anteil: <b>{pct(m.cryptoGlobal.dominancePct.eth ?? null, 1, false)}</b></div>
+            </div>
+            <p className="mt-2 text-[11px] text-ink-3">Stand laut CoinGecko: {dateTimeDe(m.cryptoGlobal.updatedAt)} (Anbieter aktualisiert alle 10 Minuten) · abgerufen {dateTimeDe(m.cryptoGlobal.fetchedAt)} · nur Kontext, kein Bestandteil des Regelwerks. <a className="text-accent" href={CG_ATTRIBUTION.url} target="_blank" rel="noreferrer">{CG_ATTRIBUTION.text}</a></p>
+          </>
+        ) : <Empty>Keine Daten. CoinGecko benötigt einen kostenlosen Demo-Schlüssel (COINGECKO_API_KEY) und eine Aktualisierung.</Empty>}
       </Card>
 
       {m.sectors && (

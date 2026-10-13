@@ -194,3 +194,16 @@ test("Einstellungen: Alpha-Vantage-Abrufplan zeigt Kontingent, Priorität und Au
   await expect(plan.locator("tr", { hasText: "daily:SPY" }).getByText("heute")).toBeVisible();
   await expect(plan.getByText(/Noch keine erfolgreichen Live-Abrufe/)).toBeVisible();
 });
+
+test("CoinGecko ohne Schlüssel: ehrliche Leerzustände statt Werten", async ({ page }) => {
+  await page.goto("/markt");
+  const card = page.locator("#krypto-markt");
+  await expect(card.getByText("Krypto-Gesamtmarkt (CoinGecko)")).toBeVisible();
+  await expect(card.getByText(/kostenlosen Demo-Schlüssel \(COINGECKO_API_KEY\)/)).toBeVisible();
+  await page.goto("/asset/BTC");
+  const cg = page.locator("#coingecko");
+  await expect(cg.getByText("Marktdaten (CoinGecko)")).toBeVisible();
+  await expect(cg.getByText(/CoinGecko-ID am Instrument/)).toBeVisible();
+  await page.goto("/einstellungen");
+  await expect(page.locator("tr", { hasText: "CoinGecko" }).getByText(/Zugang fehlt: COINGECKO_API_KEY/)).toBeVisible();
+});

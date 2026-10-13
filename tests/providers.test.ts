@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseTimeSeries, parseEconomic, parseGoldSilver, parseFxDaily, parseEarningsCsv, parseCongressTrades, detectAvError, parseGlobalQuote } from "@/lib/providers/alphavantage";
-import { parseFredObservations, parseEcbCsv, parseCompanyFacts, parseCompanyTickers, parseKalshiMarkets, parseCoinGeckoChart, buffettIndicator, secHeaders } from "@/lib/providers/official";
+import { parseFredObservations, parseEcbCsv, parseCompanyFacts, parseCompanyTickers, parseKalshiMarkets, buffettIndicator, secHeaders } from "@/lib/providers/official";
+import { parseCoinGeckoChart } from "@/lib/providers/coingecko";
 import { loadSnapshot } from "./helpers";
 
 describe("Alpha Vantage – echte Antworten (Snapshot 11.10.2026)", () => {

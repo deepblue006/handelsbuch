@@ -1,5 +1,5 @@
 /**
- * Adapter für offizielle bzw. frei dokumentierte Quellen: FRED, EZB, SEC EDGAR, Kalshi, CoinGecko.
+ * Adapter für offizielle bzw. frei dokumentierte Quellen: FRED, EZB, SEC EDGAR, Kalshi (CoinGecko: ./coingecko.ts).
  * Alle Adapter sind nach der jeweiligen Dokumentation gebaut; Live-Abrufe waren in der
  * Entwicklungsumgebung gesperrt (Status „UNGEPRÜFT“ im Quellenregister).
  */
@@ -251,25 +251,4 @@ export async function kalshiFedMarkets(seriesTicker = "KXFED", fetchImpl?: typeo
   return parseKalshiMarkets(await res.json());
 }
 
-// ============================== CoinGecko ==============================
-
-const MarketChartSchema = z.object({ prices: z.array(z.tuple([z.number(), z.number()])), total_volumes: z.array(z.tuple([z.number(), z.number()])).optional(), market_caps: z.array(z.tuple([z.number(), z.number()])).optional() });
-
-/** /coins/{id}/market_chart → Tagesschlusskurse (UTC-Tag; letzter Punkt ist ggf. ein laufender Wert). */
-export function parseCoinGeckoChart(json: unknown, today: string): { bars: DailyBar[]; marketCap: number | null; partialLast: boolean } {
-  const p = MarketChartSchema.safeParse(json);
-  if (!p.success) throw new ProviderError("CoinGecko-Antwort hat unerwartetes Format", "FORMAT");
-  const vol = new Map((p.data.total_volumes ?? []).map(([t, v]) => [new Date(t).toISOString().slice(0, 10), v]));
-  const byDay = new Map<string, number>();
-  for (const [t, v] of p.data.prices) byDay.set(new Date(t).toISOString().slice(0, 10), v); // letzter Wert je Tag
-  const bars = [...byDay.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([date, close]) => ({ date, open: null, high: null, low: null, close, volume: vol.get(date) ?? null }));
-  const mc = p.data.market_caps?.at(-1)?.[1] ?? null;
-  return { bars, marketCap: mc, partialLast: bars.at(-1)?.date === today };
-}
-
-export async function coingeckoChart(id: string, vsCurrency: string, apiKey: string, today: string, fetchImpl?: typeof fetch) {
-  if (!apiKey) throw new ProviderError("COINGECKO_API_KEY fehlt", "ZUGANG_FEHLT");
-  const url = `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(id)}/market_chart?vs_currency=${encodeURIComponent(vsCurrency.toLowerCase())}&days=365&interval=daily`;
-  const res = await fetchWithRetry(url, { headers: { "x-cg-demo-api-key": apiKey, Accept: "application/json" }, fetchImpl });
-  return parseCoinGeckoChart(await res.json(), today);
-}
+// CoinGecko: siehe ./coingecko.ts

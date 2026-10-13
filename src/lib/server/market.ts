@@ -1,6 +1,7 @@
 /**
  * Marktlage & Finanzwiesel-Kennzahlen: Indizes (ETF-Proxys), Marktbreite, Zinsen, Öl, Gold, Währung, Bewertungskontext.
  */
+import type { CryptoGlobal } from "../providers/coingecko";
 import { cache } from "react";
 import { prisma } from "../db";
 import { sma, weinsteinStage, distancePct, detectPossibleSplits } from "../calc/indicators";
@@ -167,8 +168,8 @@ export async function marketOverview() {
   const general = await getGeneral();
   const today = todayIso(general.timezone);
   const cfg = await getRuleConfig();
-  const [indices, breadth, cards, buffett, kalshi, sectors] = await Promise.all([
-    indexViews(), breadthView(today), macroCards(), buffettView(), prisma.setting.findUnique({ where: { key: "kalshiSnapshot" } }), sectorView(today),
+  const [indices, breadth, cards, buffett, kalshi, sectors, cg] = await Promise.all([
+    indexViews(), breadthView(today), macroCards(), buffettView(), prisma.setting.findUnique({ where: { key: "kalshiSnapshot" } }), sectorView(today), prisma.setting.findUnique({ where: { key: "cg:global" } }),
   ]);
   const spx = indices.find((i) => i.symbol === "SPY");
   const eff = await effectiveBreadth(today);
@@ -182,7 +183,8 @@ export async function marketOverview() {
     breadthSource: eff.source,
     pullback: spx?.drawdownPct != null ? spx.drawdownPct <= -cfg.marketPullbackPct : null,
   };
-  return { today, indices, breadth, cards, buffett, ruleA, cfg, sectors, fomc: upcomingFomc(today, 4), kalshi: kalshi?.value as { fetchedAt: string; markets: { ticker: string; title: string; subtitle: string | null; impliedPct: number | null; basis: string; closeTime: string | null }[] } | null };
+  const cryptoGlobal = (cg?.value as (CryptoGlobal & { fetchedAt: string }) | undefined) ?? null;
+  return { today, indices, breadth, cards, buffett, ruleA, cfg, sectors, cryptoGlobal, fomc: upcomingFomc(today, 4), kalshi: kalshi?.value as { fetchedAt: string; markets: { ticker: string; title: string; subtitle: string | null; impliedPct: number | null; basis: string; closeTime: string | null }[] } | null };
 }
 
 export { distancePct };

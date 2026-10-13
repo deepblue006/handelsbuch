@@ -2,6 +2,7 @@
  * Vollständige, nachvollziehbare Analyse eines Assets: Charttechnik, Fundamentaldaten,
  * Bewertungsszenarien, Termine, Regelwerk und Kaufsignalscore.
  */
+import type { CoinMarket } from "../providers/coingecko";
 import { prisma } from "../db";
 import {
   sma, ema, rsi, findCrosses, fibonacci, confluence, weinsteinStage, pivots, zonesFromPivots, roundLevels, adr, upDownVolume,
@@ -137,6 +138,7 @@ export async function analyzeAsset(symbol: string) {
   const forwardPe = fwdEps && price != null ? price / fwdEps : null;
   const growthForPeg = assumptions?.epsGrowthPct ?? fwd.growthPct;
   const pegR = peg(forwardPe, growthForPeg);
+  const cgMarket = inst.assetType === "CRYPTO" ? ((await prisma.setting.findUnique({ where: { key: `cg:market:${inst.symbol}` } }))?.value as (CoinMarket & { currency: string; fetchedAt: string; missingFields: string[] }) | undefined) ?? null : null;
   const instSummary = (await prisma.setting.findUnique({ where: { key: `inst:${inst.symbol}` } }))?.value as (ReturnType<typeof parseInstitutionalHoldings> & { provider: string; fetchedAt: string }) | undefined;
 
   // Termine & Analysten
@@ -223,7 +225,7 @@ export async function analyzeAsset(symbol: string) {
       count: fund.length,
     },
     valuation: { assumptions, scenarios, fairValueBase, modelNote: vm?.note ?? null, updatedAt: vm?.updatedAt ?? null, currencyMismatch: assumptions ? assumptions.currency !== inst.currency : false },
-    earnings, actions, insider, insiderSummary, instSummary: instSummary ?? null, politicians, rules, score, chart, weeklyChart,
+    earnings, actions, insider, insiderSummary, instSummary: instSummary ?? null, cgMarket, politicians, rules, score, chart, weeklyChart,
     market: { spy, breadth: breadth.current, rel26 },
   };
 }
