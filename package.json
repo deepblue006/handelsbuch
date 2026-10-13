@@ -20,7 +20,10 @@
     "scheduler": "tsx scripts/scheduler.ts",
     "check:secrets": "tsx scripts/check-secrets.ts",
     "test:integration": "vitest run tests/integration",
-    "db:reset-test": "tsx scripts/reset-test-db.ts"
+    "db:reset-test": "tsx scripts/reset-test-db.ts",
+    "db:bootstrap": "tsx scripts/bootstrap.ts",
+    "setup:mac": "bash scripts/setup-mac.sh",
+    "live": "bash scripts/start-live.sh"
   },
   "dependencies": {
     "@prisma/client": "6.19.3",

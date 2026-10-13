@@ -1,5 +1,8 @@
 # Installation & Betrieb
 
+> **Mac (empfohlen):** Schritt-für-Schritt-Anleitung in [`INSTALLATION_MAC.md`](INSTALLATION_MAC.md) –
+> `./scripts/setup-mac.sh` richtet alles ein, `./scripts/start-live.sh` startet Dashboard und Scheduler.
+
 ## Voraussetzungen
 Node.js 22, PostgreSQL 16 (oder Docker), optional API-Schlüssel (siehe `.env.example`).
 
@@ -9,6 +12,7 @@ npm ci
 cp .env.example .env          # DATABASE_URL anpassen, Schlüssel eintragen
 createdb handelsbuch && createdb handelsbuch_test   # bzw. per psql
 npx prisma migrate deploy
+npm run db:bootstrap          # Basis-Instrumente: Index-ETFs (SPY, QQQ, IWM) und 11 Sektor-ETFs
 npm run db:import-snapshot    # optional: echte Alpha-Vantage-Snapshots vom 11.10.2026 (als „Snapshot“ markiert)
 npm run db:seed:demo          # optional: DEMO-Portfolio (deutlich markiert); entfernen: npm run db:seed:demo -- --remove
 npm run build && npm start    # http://127.0.0.1:3000

@@ -217,3 +217,23 @@ test("Laptop-Ansicht: Euro-Beträge mit Dollarwert, Zeiten mit New-York-Zeit, Um
   await expect(page.getByText(/€ \(≈ [\d.,]+\s\$\)/).first()).toBeVisible();
   await expect(page.getByText(/(MESZ|MEZ) · [\d.,: ]+ET/).first()).toBeVisible();
 });
+
+test("Krypto per CSV: bekannte CoinGecko-ID wird automatisch zugeordnet, gekennzeichnet und ist korrigierbar (synthetische Buchung)", async ({ page }) => {
+  await page.goto("/portfolio");
+  const csv = "datum;typ;symbol;name;assettyp;boerse;waehrung;menge;kurs;gebuehren;gebuehrenwaehrung;wechselkurs_zur_basis;notiz\n02.10.2026;Kauf;ETH;Ethereum;Krypto;Börsenaggregat;EUR;0,5;2100;1;EUR;;E2E";
+  await page.getByLabel("CSV-Inhalt").fill(csv);
+  await page.getByRole("button", { name: "Vorschau prüfen" }).click();
+  await page.getByRole("button", { name: "1 gültige Zeilen importieren" }).click();
+  await expect(page.getByText(/1 Buchungen importiert/)).toBeVisible();
+  await page.goto("/asset/ETH");
+  const field = page.getByLabel("CoinGecko-ID (automatisch zugeordnet – prüfen)");
+  await expect(field).toHaveValue("ethereum");
+  await field.fill("ungültig ID");
+  await page.getByRole("button", { name: "Speichern" }).first().click();
+  await expect(page.getByText(/nur Kleinbuchstaben, Ziffern und Bindestriche/)).toBeVisible();
+  await page.getByLabel(/CoinGecko-ID/).fill("ethereum");
+  await page.getByRole("button", { name: "Speichern" }).first().click();
+  await expect(page.getByText("Gespeichert.")).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("CoinGecko-ID", { exact: true })).toHaveValue("ethereum");
+});

@@ -92,6 +92,11 @@ export default async function AssetPage({ params }: { params: Promise<{ symbol: 
             <Field label="Sektor"><input name="sector" defaultValue={inst.sector ?? ""} /></Field>
             <Field label="Präferenz"><select name="preference" defaultValue={inst.meta?.preference ?? ""}><option value="">keine</option><option value="HOLD_ONLY">nur halten</option></select></Field>
             <Field label="Präferenz-Notiz"><input name="preferenceNote" defaultValue={inst.meta?.preferenceNote ?? ""} /></Field>
+            {isCrypto && (
+              <Field label={(inst.providerIds as Record<string, string>).coingeckoAuto ? "CoinGecko-ID (automatisch zugeordnet – prüfen)" : "CoinGecko-ID"}>
+                <input name="coingeckoId" defaultValue={(inst.providerIds as Record<string, string>).coingecko ?? ""} placeholder="z. B. bitcoin (aus der Adresse der Coin-Seite)" />
+              </Field>
+            )}
             <div className="col-span-2"><Field label="Risiken / Notizen"><textarea name="riskNotes" rows={2} defaultValue={inst.meta?.riskNotes ?? ""} /></Field></div>
           </ActionForm>
           {inst.meta?.preference === "HOLD_ONLY" && <p className="mt-2"><Badge tone="info">Präferenz „nur halten“ – editierbar, löst keine Aktion aus</Badge></p>}

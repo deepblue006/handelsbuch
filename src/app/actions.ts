@@ -20,6 +20,7 @@ import { parsePriceCsv } from "@/lib/portfolio/price-import";
 import { upsertBars } from "@/lib/server/ingest";
 import { PROVIDERS } from "@/lib/providers/registry";
 import { parseSplitRatio, formatSplitRatio } from "@/lib/calc/splits";
+import { KNOWN_COINGECKO_IDS, isCoinGeckoId } from "@/lib/providers/coingecko";
 
 export type ActionState = { ok: boolean; message: string; preview?: ImportPreview | null } | null;
 
@@ -41,12 +42,21 @@ const InstrumentInput = z.object({
 });
 
 async function upsertInstrument(i: z.infer<typeof InstrumentInput>, extra: Partial<{ onWatchlist: boolean; sector: string | null; coingeckoId: string | null }> = {}) {
+  const explicitId = extra.coingeckoId && isCoinGeckoId(extra.coingeckoId) ? extra.coingeckoId : null;
+  if (extra.coingeckoId && !explicitId) throw new Error("CoinGecko-ID: nur Kleinbuchstaben, Ziffern und Bindestriche (z. B. „bitcoin“)");
   const ex = await prisma.instrument.findUnique({ where: { symbol: i.symbol } });
   if (ex) {
-    if (extra.onWatchlist) await prisma.instrument.update({ where: { id: ex.id }, data: { onWatchlist: true } });
+    const ids = (ex.providerIds ?? {}) as Record<string, string>;
+    const data: Prisma.InstrumentUpdateInput = {};
+    if (extra.onWatchlist) data.onWatchlist = true;
+    if (explicitId && ids.coingecko !== explicitId) data.providerIds = { ...ids, coingecko: explicitId, coingeckoAuto: "" };
+    if (Object.keys(data).length) return prisma.instrument.update({ where: { id: ex.id }, data });
     return ex;
   }
-  return prisma.instrument.create({ data: { symbol: i.symbol, name: i.name || i.symbol, assetType: i.assetType as AssetType, currency: i.currency, exchange: i.exchange, onWatchlist: extra.onWatchlist ?? false, sector: extra.sector ?? null, providerIds: extra.coingeckoId ? { coingecko: extra.coingeckoId } : {} } });
+  // Krypto: bekannte CoinGecko-ID automatisch zuordnen (gekennzeichnet, korrigierbar)
+  const autoId = !explicitId && i.assetType === "CRYPTO" ? KNOWN_COINGECKO_IDS[i.symbol] ?? null : null;
+  const providerIds = explicitId ? { coingecko: explicitId } : autoId ? { coingecko: autoId, coingeckoAuto: "1" } : {};
+  return prisma.instrument.create({ data: { symbol: i.symbol, name: i.name || i.symbol, assetType: i.assetType as AssetType, currency: i.currency, exchange: i.exchange, onWatchlist: extra.onWatchlist ?? false, sector: extra.sector ?? null, providerIds } });
 }
 
 export async function addTransaction(_: ActionState, f: FormData): Promise<ActionState> {
@@ -178,6 +188,13 @@ export async function saveMeta(_: ActionState, f: FormData): Promise<ActionState
     };
     await prisma.positionMeta.upsert({ where: { instrumentId }, create: { instrumentId, ...data }, update: data });
     if (str(f, "businessModel")) await prisma.instrument.update({ where: { id: instrumentId }, data: { businessModel: str(f, "businessModel"), sector: str(f, "sector") || inst.sector } });
+    if (inst.assetType === "CRYPTO" && f.has("coingeckoId")) {
+      const id = str(f, "coingeckoId").toLowerCase();
+      if (id && !isCoinGeckoId(id)) throw new Error("CoinGecko-ID: nur Kleinbuchstaben, Ziffern und Bindestriche (z. B. „bitcoin“)");
+      const ids = { ...((inst.providerIds ?? {}) as Record<string, string>) };
+      if (id) { ids.coingecko = id; delete ids.coingeckoAuto; } else { delete ids.coingecko; delete ids.coingeckoAuto; }
+      await prisma.instrument.update({ where: { id: instrumentId }, data: { providerIds: ids } });
+    }
     revalidatePath("/", "layout");
     return { ok: true, message: "Gespeichert." };
   } catch (e) { return fail(e); }

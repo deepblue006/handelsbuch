@@ -18,6 +18,19 @@ import { fetchWithRetry, ProviderError, RateLimiter } from "./http";
 import type { DailyBar } from "./types";
 
 export const CG_BASE = "https://api.coingecko.com/api/v3";
+
+/**
+ * Bekannte CoinGecko-IDs für verbreitete Coins (Ticker sind nicht eindeutig – Zuordnung wird als
+ * „automatisch“ gekennzeichnet und kann auf der Detailseite korrigiert werden).
+ */
+export const KNOWN_COINGECKO_IDS: Record<string, string> = {
+  BTC: "bitcoin", ETH: "ethereum", SOL: "solana", XRP: "ripple", ADA: "cardano", DOGE: "dogecoin", DOT: "polkadot",
+  LTC: "litecoin", LINK: "chainlink", AVAX: "avalanche-2", BNB: "binancecoin", TRX: "tron", XLM: "stellar",
+  USDT: "tether", USDC: "usd-coin", ATOM: "cosmos", BCH: "bitcoin-cash",
+};
+
+/** CoinGecko-IDs bestehen aus Kleinbuchstaben, Ziffern und Bindestrichen. */
+export const isCoinGeckoId = (s: string) => /^[a-z0-9][a-z0-9-]{0,99}$/.test(s);
 export const CG_ATTRIBUTION = { text: "Daten: CoinGecko", url: "https://www.coingecko.com/" };
 
 // ---------- market_chart (Tageskurse) ----------
