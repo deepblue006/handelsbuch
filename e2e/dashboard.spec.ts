@@ -76,7 +76,8 @@ test("Bewertungsmodell speichern erzeugt drei Szenarien", async ({ page }) => {
 test("Truth Social täuscht keinen Live-Feed vor", async ({ page }) => {
   await page.goto("/truth-social");
   await expect(page.getByText("Keine zulässige Quelle konfiguriert")).toBeVisible();
-  await expect(page.getByText("Keine Posts vorhanden – es wird kein Live-Feed vorgetäuscht.")).toBeVisible();
+  await expect(page.getByText(/Keine Posts im Dashboard gespeichert – es wird kein Live-Feed vorgetäuscht/)).toBeVisible();
+  await expect(page.getByText("Kein automatischer Abruf ins Dashboard")).toBeVisible();
   await expect(page.getByRole("link", { name: /Offizielles Profil/ })).toHaveAttribute("href", "https://truthsocial.com/@realDonaldTrump");
 });
 
