@@ -23,6 +23,12 @@ docker compose up -d --build
 ```
 Dienste: `db` (nur 127.0.0.1:5432), `app` (127.0.0.1:3000), `scheduler` (Aktualisierung alle `REFRESH_INTERVAL_HOURS`).
 
+Teststand (13.10.2026, Cloud-Sandbox): Dienst `db` (`postgres:16-alpine`) startet gesund, das Init-Skript legt
+`handelsbuch_test` an, alle Prisma-Migrationen und der Snapshot-Import laufen gegen die frische Datenbank durch.
+**Nicht getestet:** Image-Build von `app`/`scheduler` – der Debian-Paketspiegel (`deb.debian.org`, für `openssl`
+und `ca-certificates`) war durch die Netzwerk-Richtlinie der Sandbox gesperrt; npm-Registry und Docker Hub waren erreichbar.
+`.dockerignore` schließt `.env`, `.git`, `.claude`, `node_modules` und Build-Artefakte aus (keine Secrets oder Historie im Image).
+
 ## Tests
 ```bash
 npm test                         # Unit-Tests (Vitest)
