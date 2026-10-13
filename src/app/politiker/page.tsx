@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { RECORD_STATUS } from "@/lib/politics/normalize";
 import { Card, PageHeader, Badge, Empty, Table, Field } from "@/components/ui";
 import { ActionForm } from "@/components/forms";
-import { markReviewed, ptrFromText } from "@/app/actions";
+import { markReviewed, ptrFromText, ptrFromPdf, createManualFiling } from "@/app/actions";
 import { dateDe, dateTimeDe, money } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -96,11 +96,23 @@ export default async function Politiker({ searchParams }: { searchParams: Promis
               <details key={f.id} className="rounded border border-line p-2">
                 <summary className="cursor-pointer text-sm">{f.filerName} · {f.stateDistrict} · eingereicht {dateDe(f.filedDate)} · DocID {f.docId}</summary>
                 <p className="mt-1 text-xs"><a className="text-accent" href={f.sourceUrl ?? "#"} target="_blank" rel="noreferrer">Original-PDF öffnen</a> – Text aus dem PDF kopieren und hier einfügen. Die Extraktion wird mit Unsicherheiten markiert und muss manuell geprüft werden.</p>
-                <ActionForm action={ptrFromText} submit="Text extrahieren" className="mt-2 flex flex-col gap-2"><input type="hidden" name="filingId" value={f.id} /><textarea name="text" rows={4} className="font-mono text-xs" /></ActionForm>
+                <ActionForm action={ptrFromPdf} submit="PDF auswerten" className="mt-2 flex flex-wrap items-center gap-2"><input type="hidden" name="filingId" value={f.id} /><input type="file" name="pdf" accept="application/pdf" aria-label="Original-PDF" /></ActionForm>
+                <ActionForm action={ptrFromText} submit="Text extrahieren" className="mt-2 flex flex-col gap-2"><input type="hidden" name="filingId" value={f.id} /><textarea name="text" rows={4} className="font-mono text-xs" placeholder="… oder Text aus dem PDF hier einfügen" /></ActionForm>
+                {f.lastError && <p className="mt-1 text-xs text-warn">▲ {f.lastError}</p>}
               </details>
             ))}
           </div>
-        ) : <Empty>Keine offenen Dokumente. Der Jahresindex des House Clerk wird bei der Aktualisierung geladen (Provider „house_clerk“).</Empty>}
+        ) : <Empty>Keine offenen Dokumente. Der Jahresindex des House Clerk wird bei der Aktualisierung geladen (Provider „house_clerk“); bis zu HOUSE_PDF_PER_RUN PDFs werden automatisch ausgewertet.</Empty>}
+        <details className="mt-4">
+          <summary className="cursor-pointer text-xs text-accent">Meldung manuell anlegen (z. B. Senate eFD, OGE)</summary>
+          <ActionForm action={createManualFiling} submit="Anlegen" className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-5">
+            <Field label="Kammer"><select name="chamber"><option value="SENATE">Senate</option><option value="HOUSE">House</option><option value="EXECUTIVE">Exekutive (OGE)</option></select></Field>
+            <Field label="Name wie im Dokument"><input name="filerName" required /></Field>
+            <Field label="Einreichungsdatum"><input type="date" name="filedDate" /></Field>
+            <Field label="Dokument-ID"><input name="docId" /></Field>
+            <Field label="Offizieller Link"><input name="sourceUrl" placeholder="https://efdsearch.senate.gov/…" /></Field>
+          </ActionForm>
+        </details>
       </Card>
     </div>
   );

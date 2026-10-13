@@ -30,8 +30,8 @@ und sind konfigurierbare Startparameter.
 | Zinserwartungen: Kalshi | implementiert, nicht verifiziert, standardmäßig aus · CME FedWatch: noch nicht implementiert (kostenpflichtig) |
 | ETF-/ETP-Flows (Import, Deduplizierung, Kumulierung, Lücken) | implementiert und getestet; kein automatischer Abruf (keine verifizierte API) |
 | Politiker-Radar: Sekundärquelle Alpha Vantage | implementiert und mit echten Daten (NVDA) getestet |
-| Politiker-Radar: House-Clerk-Index, PTR-Text-Extraktion, Prüfwarteschlange, Versionen | teilweise implementiert; Index-Abruf nicht verifiziert; PDF-Text per Einfügen |
-| Senate eFD, OGE | noch nicht implementiert (nur Links/manuell) |
+| Politiker-Radar: House-Clerk-Index, automatische PDF-Textextraktion (gedrosselt), PDF-Upload, Prüfwarteschlange, Versionen | implementiert und mit synthetischen PDFs getestet (E2E); Abruf echter House-Dokumente nicht verifiziert (Host gesperrt); gescannte PDFs → „OCR nötig“ |
+| Senate eFD, OGE | kein automatischer Abruf; manuelle Meldung mit offiziellem Link + PDF-Upload implementiert |
 | Krypto-Kurse (CoinGecko / Alpha Vantage) | CoinGecko nicht verifiziert; Alpha-Vantage-Format verifiziert (BTC/EUR-Snapshot) |
 | On-Chain-Kennzahlen | noch nicht implementiert |
 | Truth Social | kein Live-Feed (keine zulässige Quelle verifiziert); optionaler RSS-Import implementiert, nicht verifiziert |

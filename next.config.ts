@@ -10,7 +10,9 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  serverExternalPackages: ["@prisma/client"],
+  serverExternalPackages: ["@prisma/client", "unpdf"],
+  // Uploads (CSV, Altsicherung, PTR-PDF) – Größen werden zusätzlich in den Aktionen geprüft
+  experimental: { serverActions: { bodySizeLimit: "20mb" } },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

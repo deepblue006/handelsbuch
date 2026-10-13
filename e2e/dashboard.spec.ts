@@ -95,3 +95,31 @@ test("Politiker-Radar: Filter und Prüfwarteschlange", async ({ page }) => {
   await page.goto("/politiker?review=1");
   await expect(page.getByText(/identische Zeilen/).first()).toBeVisible();
 });
+
+test("Politiker-Radar: manuelle Meldung anlegen und PTR-PDF auswerten", async ({ page }) => {
+  const { PDFDocument, StandardFonts } = await import("pdf-lib");
+  const doc = await PDFDocument.create();
+  const p = doc.addPage([612, 792]);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  p.drawText("JT Tesla, Inc. - Common Stock (TSLA) [ST] S 09/02/2026 09/15/2026 $15,001 - $50,000", { x: 30, y: 700, size: 9, font });
+  const pdf = Buffer.from(await doc.save());
+
+  await page.goto("/politiker");
+  await page.getByText("Meldung manuell anlegen").click();
+  await page.locator('input[name="filerName"]').fill("E2E Testperson");
+  await page.locator('input[name="filedDate"]').fill("2026-09-20");
+  await page.getByRole("button", { name: "Anlegen" }).click();
+  await expect(page.getByText("Meldung angelegt")).toBeVisible();
+  await page.reload();
+  const item = page.locator("details", { hasText: "E2E Testperson" });
+  await item.locator("summary").click();
+  await item.locator('input[type="file"]').setInputFiles({ name: "ptr.pdf", mimeType: "application/pdf", buffer: pdf });
+  await item.getByRole("button", { name: "PDF auswerten" }).click();
+  // Nach der Auswertung verlässt das Dokument die Liste „ohne Transaktionen“; Ergebnis in der Prüfwarteschlange prüfen
+  await expect(page.locator("details", { hasText: "E2E Testperson" })).toHaveCount(0);
+  await page.goto("/politiker?person=E2E&review=1");
+  const row = page.locator("tr", { hasText: "TSLA" });
+  await expect(row).toContainText("JOINT");
+  await expect(row).toContainText("02.09.2026");
+  await expect(row).toContainText("Abgleich mit Original-PDF erforderlich");
+});

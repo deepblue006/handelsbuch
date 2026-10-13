@@ -8,7 +8,8 @@ import { PROVIDERS, configStatus } from "../providers/registry";
 import { AlphaVantageClient } from "../providers/alphavantage";
 import { RateLimiter, ProviderError, fetchWithRetry } from "../providers/http";
 import { FRED_SERIES, fredSeries, ecbEurUsd, coingeckoChart, secTickerMap, secCompanyFacts, kalshiFedMarkets } from "../providers/official";
-import { fromAlphaVantage, parseHouseIndexXml } from "../politics/normalize";
+import { fromAlphaVantage, parseHouseIndexXml, parsePtrText } from "../politics/normalize";
+import { extractPdfText } from "../politics/pdf";
 import { parseRss } from "../social/truthsocial";
 import { withFetchLog, countCallsToday, upsertBars, upsertMacro, upsertEarnings, ingestPoliticianTx, upsertEstimates, upsertInsider, upsertInstitutional } from "./ingest";
 import { todayIso } from "../settings";
@@ -223,7 +224,35 @@ export async function refreshHouseClerk(year = Number(todayIso().slice(0, 4))): 
       update: { lastError: r.error, lastErrorAt: new Date() },
     });
   }
-  return [{ provider: "house_clerk", dataset: ds, ok: r.ok, info: r.ok ? `${r.processed} PTR-Dokumente` : r.error }];
+  const out = [{ provider: "house_clerk", dataset: ds, ok: r.ok, info: r.ok ? `${r.processed} PTR-Dokumente` : r.error }];
+  if (r.ok) out.push(...(await processHousePdfs(year)));
+  return out;
+}
+
+/** Lädt bis zu HOUSE_PDF_PER_RUN offene PTR-PDFs (1 je Sekunde), extrahiert Text und legt Transaktionen zur Prüfung an. */
+export async function processHousePdfs(year: number): Promise<JobResult[]> {
+  const limit = Number(process.env.HOUSE_PDF_PER_RUN ?? 20);
+  const limiter = new RateLimiter(1000);
+  const filings = await prisma.politicianFiling.findMany({ where: { source: "HOUSE_CLERK", year, filingType: "PTR", status: "OFFIZIELLE_QUELLE_GEFUNDEN", transactions: { none: {} } }, orderBy: { filedDate: "desc" }, take: limit });
+  const out: JobResult[] = [];
+  for (const f of filings) {
+    if (!f.sourceUrl) continue;
+    await limiter.acquire();
+    const r = await withFetchLog("house_clerk", `pdf:${f.docId}`, async () => {
+      const res = await fetchWithRetry(f.sourceUrl!, { retries: 1, timeoutMs: 60_000 });
+      const pdf = await extractPdfText(new Uint8Array(await res.arrayBuffer()));
+      if (!pdf.hasTextLayer) {
+        await prisma.politicianFiling.update({ where: { id: f.id }, data: { status: "UNVOLLSTAENDIG", lastError: pdf.note } });
+        return { received: 0, processed: 0, status: "PARTIAL" as const, note: pdf.note };
+      }
+      const rows = parsePtrText(pdf.text, { politicianName: f.filerName, chamber: "HOUSE", filedDate: f.filedDate?.toISOString().slice(0, 10) ?? null, state: f.stateDistrict });
+      const c = await ingestPoliticianTx(rows, new Date(), todayIso(), f.id);
+      await prisma.politicianFiling.update({ where: { id: f.id }, data: { rawText: pdf.text.slice(0, 100_000), status: rows.length ? "AUTOMATISCH_EXTRAHIERT" : "NICHT_EINDEUTIG", lastError: rows.length ? null : "Keine Transaktionszeilen erkannt – manuelle Erfassung nötig" } });
+      return { received: rows.length, processed: c.INSERT + c.REVIEW + c.SUPERSEDE, note: pdf.note };
+    });
+    out.push({ provider: "house_clerk", dataset: `pdf:${f.docId}`, ok: r.ok, info: r.ok ? `${r.processed} Transaktionen` : r.error });
+  }
+  return out;
 }
 
 export async function refreshTruthSocial(): Promise<JobResult[]> {

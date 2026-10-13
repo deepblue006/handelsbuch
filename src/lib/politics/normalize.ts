@@ -374,14 +374,25 @@ export async function parseHouseIndexXml(xml: string): Promise<HouseFilingIndexE
  */
 export function parsePtrText(text: string, meta: { politicianName: string; chamber: "HOUSE" | "SENATE"; filedDate: string | null; state: string | null }): NormTx[] {
   const flat = text.replace(/\r/g, "").replace(/\n+/g, " ").replace(/\s+/g, " ");
-  const re = /\s*(?:\b(SP|JT|DC)\s+)?([^$]{3,200}?)\s+(P|S \(partial\)|S|E)\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+(\$[\d,]+\s*-\s*\$[\d,]+|Over \$[\d,]+)/g;
+  const re = /(.{3,400}?)\s+(P|S \(partial\)|S|E)\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+(\$[\d,]+\s*-\s*\$[\d,]+|Over \$[\d,]+)/g;
+  const HEADER = /(PERIODIC TRANSACTION REPORT|FILING ID[^A-Z]*|ID Owner Asset Transaction Type Date Notification Date Amount Cap\. Gains > \$200\?|Clerk of the House of Representatives[^.]*\.?|Name:|Status:|State\/District:)/gi;
   const out: NormTx[] = [];
   let m: RegExpExecArray | null;
   while ((m = re.exec(flat))) {
-    const [, ownerCode, assetRaw, type, d1, d2, amount] = m;
+    const [, prefixRaw, type, d1, d2, amount] = m;
+    // Eigentümerkürzel steht unmittelbar vor der Asset-Bezeichnung: letztes Vorkommen im Präfix
+    const prefix = prefixRaw!.trim();
+    const ownerHits = [...prefix.matchAll(/(?:^|\s)(SP|JT|DC)\s+(?=\S)/g)];
+    const lastOwner = ownerHits.at(-1);
+    const ownerCode = lastOwner?.[1];
+    let assetRaw = lastOwner ? prefix.slice((lastOwner.index ?? 0) + lastOwner[0].length) : prefix;
+    const headerFound = HEADER.test(assetRaw);
+    HEADER.lastIndex = 0;
+    assetRaw = assetRaw.replace(HEADER, " ").replace(/\s+/g, " ").trim();
     const flags: string[] = ["Aus Dokumenttext extrahiert – Abgleich mit Original-PDF erforderlich"];
     let confidence = 0.9;
-    const asset = assetRaw!.replace(/^(ID Owner Asset Transaction Type Date Notification Date Amount Cap\. Gains > \$200\?)\s*/i, "").trim();
+    const asset = assetRaw;
+    if (headerFound) { flags.push("Kopfzeilentext aus der Asset-Bezeichnung entfernt – bitte prüfen"); confidence -= 0.05; }
     const tick = asset.match(/\(([A-Z.]{1,6})\)/);
     const typeTag = asset.match(/\[([A-Za-z]{2,3})\]/);
     if (!tick) { flags.push("Kein Ticker im Text"); confidence -= 0.2; }

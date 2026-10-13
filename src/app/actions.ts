@@ -15,6 +15,7 @@ import { refreshAll } from "@/lib/server/refresh";
 import { parseWideFlowTable } from "@/lib/flows/flows";
 import { upsertFlows, ingestPoliticianTx } from "@/lib/server/ingest";
 import { parsePtrText } from "@/lib/politics/normalize";
+import { extractPdfText } from "@/lib/politics/pdf";
 import { PROVIDERS } from "@/lib/providers/registry";
 
 export type ActionState = { ok: boolean; message: string; preview?: ImportPreview | null } | null;
@@ -327,5 +328,37 @@ export async function saveManualFx(_: ActionState, f: FormData): Promise<ActionS
     await prisma.setting.upsert({ where: { key: "manualFx" }, create: { key: "manualFx", value: list as Prisma.InputJsonValue }, update: { value: list as Prisma.InputJsonValue } });
     revalidatePath("/", "layout");
     return { ok: true, message: `Manueller Kurs ${pair} gespeichert (nur genutzt, wenn keine Quelle liefert).` };
+  } catch (e) { return fail(e); }
+}
+
+export async function ptrFromPdf(_: ActionState, f: FormData): Promise<ActionState> {
+  try {
+    const filing = await prisma.politicianFiling.findUniqueOrThrow({ where: { id: str(f, "filingId") } });
+    const file = f.get("pdf");
+    if (!(file instanceof File) || file.size === 0) throw new Error("Keine PDF-Datei gewählt");
+    const pdf = await extractPdfText(new Uint8Array(await file.arrayBuffer()));
+    if (!pdf.hasTextLayer) {
+      await prisma.politicianFiling.update({ where: { id: filing.id }, data: { status: "UNVOLLSTAENDIG", lastError: pdf.note } });
+      return { ok: false, message: pdf.note };
+    }
+    const rows = parsePtrText(pdf.text, { politicianName: filing.filerName, chamber: filing.chamber === "SENATE" ? "SENATE" : "HOUSE", filedDate: filing.filedDate?.toISOString().slice(0, 10) ?? null, state: filing.stateDistrict });
+    const c = await ingestPoliticianTx(rows, new Date(), todayIso(), filing.id);
+    await prisma.politicianFiling.update({ where: { id: filing.id }, data: { rawText: pdf.text.slice(0, 100_000), status: rows.length ? "AUTOMATISCH_EXTRAHIERT" : "NICHT_EINDEUTIG" } });
+    revalidatePath("/politiker");
+    return { ok: rows.length > 0, message: rows.length ? `${rows.length} Zeilen aus ${pdf.pages} Seite(n) extrahiert (neu: ${c.INSERT}, Prüfung: ${c.REVIEW}). Bitte gegen das Original prüfen.` : "Textebene vorhanden, aber keine Transaktionszeilen erkannt – bitte Text manuell einfügen." };
+  } catch (e) { return fail(e); }
+}
+
+export async function createManualFiling(_: ActionState, f: FormData): Promise<ActionState> {
+  try {
+    const chamber = z.enum(["HOUSE", "SENATE", "EXECUTIVE"]).parse(str(f, "chamber"));
+    const filerName = z.string().min(3).max(200).parse(str(f, "filerName"));
+    const url = str(f, "sourceUrl");
+    if (url && !/^https:\/\/([a-z0-9-]+\.)*(house\.gov|senate\.gov|oge\.gov)\//i.test(url)) throw new Error("Originallink muss auf eine offizielle Quelle zeigen (house.gov, senate.gov, oge.gov)");
+    const filed = parseDateFlexible(str(f, "filedDate"));
+    const docId = str(f, "docId") || `manuell-${Date.now()}`;
+    await prisma.politicianFiling.create({ data: { source: "MANUELL", chamber, docId, filerName, filingType: "PTR", filedDate: filed ? new Date(filed + "T00:00:00Z") : null, year: filed ? Number(filed.slice(0, 4)) : null, sourceUrl: url || null, status: "OFFIZIELLE_QUELLE_GEFUNDEN" } });
+    revalidatePath("/politiker");
+    return { ok: true, message: "Meldung angelegt – jetzt PDF hochladen oder Text einfügen." };
   } catch (e) { return fail(e); }
 }
