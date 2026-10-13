@@ -6,12 +6,14 @@ const files = execSync("git ls-files", { encoding: "utf8" }).split("\n").filter(
 const patterns: [string, RegExp][] = [
   ["API-Key-Zuweisung", /(API_KEY|SECRET|PASSWORD)\s*=\s*["']?[A-Za-z0-9_\-]{12,}/],
   ["Private Key", /-----BEGIN [A-Z ]*PRIVATE KEY-----/],
-  ["Postgres-URL mit Passwort (außer Beispiel)", /postgres(?:ql)?:\/\/[^:\s]+:(?!handelsbuch_dev|change_me|PASSWORT)[^@\s]{6,}@/],
+  ["Postgres-URL mit Passwort (außer Beispiel/Platzhalter)", /postgres(?:ql)?:\/\/[^:\s]+:(?!handelsbuch_dev|change_me|PASSWORT|\$\{)[^@\s]{6,}@/],
 ];
 let bad = 0;
 for (const f of files) {
   if (!fs.existsSync(f) || fs.statSync(f).size > 2_000_000) continue;
   const text = fs.readFileSync(f, "utf8");
+  // Testdateien mit absichtlich synthetischen Geheimnissen müssen sich ausdrücklich kennzeichnen
+  if (f.startsWith("tests/") && text.includes("secret-check: synthetische Testwerte")) continue;
   for (const [name, re] of patterns) if (re.test(text) && !f.endsWith(".env.example")) { console.log(`VERDACHT ${name}: ${f}`); bad++; }
 }
 if (fs.existsSync(".env") && files.includes(".env")) { console.log("FEHLER: .env ist versioniert"); bad++; }

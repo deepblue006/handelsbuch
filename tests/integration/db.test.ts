@@ -1,3 +1,4 @@
+// secret-check: synthetische Testwerte – enthält absichtlich gefälschte Schlüssel zur Prüfung der Schwärzung
 /**
  * Integrationstests gegen eine echte PostgreSQL-Testdatenbank.
  * Werden nur ausgeführt, wenn TEST_DATABASE_URL gesetzt ist (siehe docs/BETRIEB.md).

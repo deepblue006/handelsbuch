@@ -1,3 +1,4 @@
+// secret-check: synthetische Testwerte – enthält absichtlich gefälschte Schlüssel zur Prüfung der Schwärzung
 import { describe, expect, it, vi } from "vitest";
 import { assessFreshness, businessDaysBetween } from "@/lib/data/quality";
 import { redact, stripSecretsForExport, looksLikeSecretMaterial } from "@/lib/security/redact";
