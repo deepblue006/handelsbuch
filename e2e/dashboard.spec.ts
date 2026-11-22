@@ -4,7 +4,9 @@ test("Übersicht kennzeichnet Demo- und Snapshotdaten", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Übersicht" })).toBeVisible();
   await expect(page.getByRole("alert").filter({ hasText: "DEMODATEN AKTIV" })).toBeVisible();
-  await expect(page.getByText("Snapshot · 09.10.2026").first()).toBeVisible();
+  // Snapshot vom 09.10.2026: „Snapshot“, solange frisch, danach ehrlich „veraltet“ – nie „aktuell“
+  await expect(page.getByText(/(Snapshot|veraltet) · 09\.10\.2026/).first()).toBeVisible();
+  await expect(page.getByText(/aktuell · 09\.10\.2026/)).toHaveCount(0);
   await expect(page.getByText("DEMO – keine Marktdaten").first()).toBeVisible();
 });
 
@@ -152,7 +154,9 @@ test("Marktlage: Sektorrotation sichtbar; externe Marktbreite löst Regel A aus"
   await expect(page.getByText(/Saisonalität S&P 500/)).toBeVisible();
   await expect(page.getByText(/nicht auswertbar – Indexverlauf oder Marktbreite fehlt/)).toBeVisible();
   await page.getByText("Externe Marktbreite manuell erfassen").click();
-  await page.locator('input[name="date"]').fill("2026-10-09");
+  // Externe Breite zählt für Regel A nur bis 7 Tage alt → heutiges Datum (Berlin) eintragen
+  const todayBerlin = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date());
+  await page.locator('input[name="date"]').fill(todayBerlin);
   await page.locator('input[name="pctAbove"]').fill("40");
   await page.locator('input[name="source"]').fill("E2E-Test, synthetischer Wert");
   await page.getByRole("button", { name: "Speichern" }).click();

@@ -1,8 +1,9 @@
 import { defineConfig } from "@playwright/test";
 import fs from "node:fs";
 
-// In vorkonfigurierten Umgebungen liegt Chromium unter /opt/pw-browsers; sonst Standard von Playwright.
-const preinstalled = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
+// In vorkonfigurierten Cloud-Umgebungen liegt Chromium unter /opt/pw-browsers/chromium (versionsunabhängiger Link);
+// sonst (z. B. auf dem Mac) Standard von Playwright.
+const preinstalled = "/opt/pw-browsers/chromium";
 const executablePath = fs.existsSync(preinstalled) ? preinstalled : undefined;
 const dbUrl = process.env.E2E_DATABASE_URL ?? "";
 
