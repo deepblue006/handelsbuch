@@ -75,10 +75,18 @@ export function Stat({ label, value, sub, tone }: { label: string; value: ReactN
   return (
     <div>
       <div className="text-[11px] uppercase tracking-wider text-ink-3">{label}</div>
-      <div className={cn("mt-0.5 text-lg font-semibold", tone === "good" && "text-good", tone === "bad" && "text-bad")}>{value}</div>
+      <div className={cn("mt-0.5 text-lg font-semibold", tone === "good" && "text-good", tone === "bad" && "text-bad")}>{splitUsd(value)}</div>
       {sub && <div className="text-xs text-ink-2">{sub}</div>}
     </div>
   );
+}
+
+/** „1.234,56 € (≈ 1.382,70 $)“ → Euro groß, Dollarwert klein in eigener Zeile (Kennzahl-Kacheln). */
+function splitUsd(value: ReactNode): ReactNode {
+  if (typeof value !== "string") return value;
+  const i = value.indexOf(" (≈ ");
+  if (i < 0 || !value.endsWith(")")) return value;
+  return <>{value.slice(0, i)}<span className="block text-xs font-normal text-ink-2">≈ {value.slice(i + 4, -1)}</span></>;
 }
 
 export function DemoBanner() {
